@@ -1,66 +1,26 @@
+if _G.FPSBoosterRunning then
+    warn("FPS Booster is already running.")
+    return
+end
+
+_G.FPSBoosterRunning = true
+
 if not _G.Ignore then
-    _G.Ignore = {} -- Add Instances to this table to ignore them (e.g. _G.Ignore = {workspace.Map, workspace.Map2})
+    _G.Ignore = {}
 end
+
 if not _G.WaitPerAmount then
-    _G.WaitPerAmount = 500 -- Set Higher or Lower depending on your computer's performance
+    _G.WaitPerAmount = 500
 end
+
 if _G.ConsoleLogs == nil then
-    _G.ConsoleLogs = false -- Set to true if you want console logs (mainly for debugging)
+    _G.ConsoleLogs = false
 end
 
 if not game:IsLoaded() then
     repeat
         task.wait()
     until game:IsLoaded()
-end
-if not _G.Settings then
-    _G.Settings = {
-        PlayerSettings = {
-            ["Ignore Me"] = true, -- If set to true, the script will ignore the local player
-            ["Ignore Others"] = true, -- If set to true, the script will ignore other players
-            ["Ignore Tools"] = true -- If set to true, the script will ignore tools
-        },
-        MeshSettings = {
-            NoMesh = false, -- If set to true, it will remove meshes from the game
-            NoTexture = false, -- If set to true, it will remove textures from the meshes
-            Destroy = false -- If set to true, it will destroy the mesh instances
-        },
-        ImageSettings = {
-            Invisible = true, -- If set to true, it will make the images invisible
-            Destroy = false -- If set to true, it will destroy the image instances
-        },
-        ExplosionSettings = {
-            Smaller = true, -- If set to true, it will make the explosions smaller
-            Invisible = false, -- If set to true, it will make the explosions invisible (not recommended for PVP games)
-            Destroy = false -- If set to true, it will destroy the explosion instances (not recommended for PVP games)
-        },
-        ParticleSettings = {
-            Invisible = true, -- If set to true, it will make the particles invisible
-            Destroy = false -- If set to true, it will destroy the particle instances
-        },
-        TextLabelSettings = {
-            LowerQuality = false, -- If set to true, it will reduce the quality of text labels
-            Invisible = false, -- If set to true, it will make the text labels invisible
-            Destroy = false -- If set to true, it will destroy the text label instances
-        },
-        MeshPartSettings = {
-            LowerQuality = true, -- If set to true, it will reduce the quality of mesh parts
-            Invisible = false, -- If set to true, it will make the mesh parts invisible
-            NoTexture = false, -- If set to true, it will remove the texture from the mesh parts
-            NoMesh = false, -- If set to true, it will remove the mesh from the mesh parts
-            Destroy = false -- If set to true, it will destroy the mesh part instances
-        },
-        FPSBoostSettings = {
-            ["No Particles"] = true, -- Disables all ParticleEmitter, Trail, Smoke, Fire, and Sparkles
-            ["No Camera Effects"] = true, -- Disables all PostEffect's (Camera/Lighting Effects)
-            ["No Explosions"] = true, -- Makes Explosion's invisible
-            ["No Clothes"] = true, -- Removes Clothing from the game
-            ["Low Water Graphics"] = true, -- Removes Water Quality
-            ["No Shadows"] = true, -- Remove Shadows
-            ["Low Rendering"] = true, -- Lower Rendering
-            ["Low Quality Parts"] = true -- Lower quality parts
-        }
-    }
 end
 
 local Players, Lighting, MaterialService = game:GetService("Players"), game:GetService("Lighting"), game:GetService("MaterialService")
@@ -274,6 +234,8 @@ for i, v in pairs(Descendants) do
     end
 end
 warn("FPS Booster Loaded!")
+
+_G.FPSBoosterRunning = false
 --game.DescendantAdded:Connect(CheckIfBad)
 --[[game.DescendantAdded:Connect(function(value)
     CheckIfBad(value)
