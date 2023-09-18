@@ -1,10 +1,4 @@
 return function(Settings)
-    if _G.FPSBoosterRunning then
-        warn("FPS Booster is already running.")
-        return
-    end
-    
-    _G.FPSBoosterRunning = true
     
     if not _G.Ignore then
         _G.Ignore = {}
@@ -235,8 +229,6 @@ return function(Settings)
         end
     end
     warn("FPS Booster Loaded!")
-    
-    _G.FPSBoosterRunning = false
 end
 --game.DescendantAdded:Connect(CheckIfBad)
 --[[game.DescendantAdded:Connect(function(value)
