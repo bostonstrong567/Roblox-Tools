@@ -1,5 +1,5 @@
 local settings = {}
-function settings:returnSerttings(Settings)
+function settings:returnSettings(Settings)
     if not _G.Ignore then
         _G.Ignore = {}
     end
