@@ -62,8 +62,10 @@ if not _G.Settings then
         }
     }
 end
+
 local Players, Lighting, MaterialService = game:GetService("Players"), game:GetService("Lighting"), game:GetService("MaterialService")
 local ME, CanBeEnabled = Players.LocalPlayer, {"ParticleEmitter", "Trail", "Smoke", "Fire", "Sparkles"}
+
 local function PartOfCharacter(Instance)
     for i, v in pairs(Players:GetPlayers()) do
         if v ~= ME and v.Character and Instance:IsDescendantOf(v.Character) then
@@ -72,6 +74,7 @@ local function PartOfCharacter(Instance)
     end
     return false
 end
+
 local function DescendantOfIgnore(Instance)
     for i, v in pairs(_G.Ignore) do
         if Instance:IsDescendantOf(v) then
@@ -80,110 +83,97 @@ local function DescendantOfIgnore(Instance)
     end
     return false
 end
+
 local function CheckIfBad(Instance)
-    if not Instance:IsDescendantOf(Players) and (_G.Settings.Players["Ignore Others"] and not PartOfCharacter(Instance) or not _G.Settings.Players["Ignore Others"]) and (_G.Settings.Players["Ignore Me"] and ME.Character and not Instance:IsDescendantOf(ME.Character) or not _G.Settings.Players["Ignore Me"]) and (_G.Settings.Players["Ignore Tools"] and not Instance:IsA("BackpackItem") and not Instance:FindFirstAncestorWhichIsA("BackpackItem") or not _G.Settings.Players["Ignore Tools"])--[[not PartOfCharacter(Instance)]] and (_G.Ignore and not table.find(_G.Ignore, Instance) and not DescendantOfIgnore(Instance) or (not _G.Ignore or type(_G.Ignore) ~= "table" or #_G.Ignore <= 0)) then
+    if not Instance:IsDescendantOf(Players) and (_G.Settings.PlayerSettings["Ignore Others"] and not PartOfCharacter(Instance) or not _G.Settings.PlayerSettings["Ignore Others"]) and (_G.Settings.PlayerSettings["Ignore Me"] and ME.Character and not Instance:IsDescendantOf(ME.Character) or not _G.Settings.PlayerSettings["Ignore Me"]) and (_G.Settings.PlayerSettings["Ignore Tools"] and not Instance:IsA("BackpackItem") and not Instance:FindFirstAncestorWhichIsA("BackpackItem") or not _G.Settings.PlayerSettings["Ignore Tools"]) and (not DescendantOfIgnore(Instance)) then
         if Instance:IsA("DataModelMesh") then
-            if _G.Settings.Meshes.NoMesh and Instance:IsA("SpecialMesh") then
+            if _G.Settings.MeshSettings.NoMesh and Instance:IsA("SpecialMesh") then
                 Instance.MeshId = ""
             end
-            if _G.Settings.Meshes.NoTexture and Instance:IsA("SpecialMesh") then
+            if _G.Settings.MeshSettings.NoTexture and Instance:IsA("SpecialMesh") then
                 Instance.TextureId = ""
             end
-            if _G.Settings.Meshes.Destroy or _G.Settings["No Meshes"] then
+            if _G.Settings.MeshSettings.Destroy then
                 Instance:Destroy()
             end
         elseif Instance:IsA("FaceInstance") then
-            if _G.Settings.Images.Invisible then
+            if _G.Settings.ImageSettings.Invisible then
                 Instance.Transparency = 1
-                Instance.Shiny = 1
             end
-            if _G.Settings.Images.LowDetail then
-                Instance.Shiny = 1
-            end
-            if _G.Settings.Images.Destroy then
+            if _G.Settings.ImageSettings.Destroy then
                 Instance:Destroy()
             end
         elseif Instance:IsA("ShirtGraphic") then
-            if _G.Settings.Images.Invisible then
+            if _G.Settings.ImageSettings.Invisible then
                 Instance.Graphic = ""
             end
-            if _G.Settings.Images.Destroy then
+            if _G.Settings.ImageSettings.Destroy then
                 Instance:Destroy()
             end
         elseif table.find(CanBeEnabled, Instance.ClassName) then
-            if _G.Settings["Invisible Particles"] or _G.Settings["No Particles"] or (_G.Settings.Other and _G.Settings.Other["Invisible Particles"]) or (_G.Settings.Particles and _G.Settings.Particles.Invisible) then
+            if _G.Settings.ParticleSettings.Invisible then
                 Instance.Enabled = false
             end
-            if (_G.Settings.Other and _G.Settings.Other["No Particles"]) or (_G.Settings.Particles and _G.Settings.Particles.Destroy) then
+            if _G.Settings.ParticleSettings.Destroy then
                 Instance:Destroy()
             end
-        elseif Instance:IsA("PostEffect") and (_G.Settings["No Camera Effects"] or (_G.Settings.Other and _G.Settings.Other["No Camera Effects"])) then
+        elseif Instance:IsA("PostEffect") and _G.Settings.FPSBoostSettings["No Camera Effects"] then
             Instance.Enabled = false
         elseif Instance:IsA("Explosion") then
-            if _G.Settings["Smaller Explosions"] or (_G.Settings.Other and _G.Settings.Other["Smaller Explosions"]) or (_G.Settings.Explosions and _G.Settings.Explosions.Smaller) then
+            if _G.Settings.ExplosionSettings.Smaller then
                 Instance.BlastPressure = 1
                 Instance.BlastRadius = 1
             end
-            if _G.Settings["Invisible Explosions"] or (_G.Settings.Other and _G.Settings.Other["Invisible Explosions"]) or (_G.Settings.Explosions and _G.Settings.Explosions.Invisible) then
+            if _G.Settings.ExplosionSettings.Invisible then
                 Instance.BlastPressure = 1
                 Instance.BlastRadius = 1
                 Instance.Visible = false
             end
-            if _G.Settings["No Explosions"] or (_G.Settings.Other and _G.Settings.Other["No Explosions"]) or (_G.Settings.Explosions and _G.Settings.Explosions.Destroy) then
+            if _G.Settings.ExplosionSettings.Destroy then
                 Instance:Destroy()
             end
-        elseif Instance:IsA("Clothing") or Instance:IsA("SurfaceAppearance") or Instance:IsA("BaseWrap") then
-            if _G.Settings["No Clothes"] or (_G.Settings.Other and _G.Settings.Other["No Clothes"]) then
-                Instance:Destroy()
-            end
-        elseif Instance:IsA("BasePart") and not Instance:IsA("MeshPart") then
-            if _G.Settings["Low Quality Parts"] or (_G.Settings.Other and _G.Settings.Other["Low Quality Parts"]) then
-                Instance.Material = Enum.Material.Plastic
-                Instance.Reflectance = 0
-            end
+        elseif Instance:IsA("Clothing") and _G.Settings.FPSBoostSettings["No Clothes"] then
+            Instance:Destroy()
+        elseif Instance:IsA("BasePart") and not Instance:IsA("MeshPart") and _G.Settings.FPSBoostSettings["Low Quality Parts"] then
+            Instance.Material = Enum.Material.Plastic
+            Instance.Reflectance = 0
         elseif Instance:IsA("TextLabel") and Instance:IsDescendantOf(workspace) then
-            if _G.Settings["Lower Quality TextLabels"] or (_G.Settings.Other and _G.Settings.Other["Lower Quality TextLabels"]) or (_G.Settings.TextLabels and _G.Settings.TextLabels.LowerQuality) then
+            if _G.Settings.TextLabelSettings.LowerQuality then
                 Instance.Font = Enum.Font.SourceSans
                 Instance.TextScaled = false
                 Instance.RichText = false
                 Instance.TextSize = 14
             end
-            if _G.Settings["Invisible TextLabels"] or (_G.Settings.Other and _G.Settings.Other["Invisible TextLabels"]) or (_G.Settings.TextLabels and _G.Settings.TextLabels.Invisible) then
+            if _G.Settings.TextLabelSettings.Invisible then
                 Instance.Visible = false
             end
-            if _G.Settings["No TextLabels"] or (_G.Settings.Other and _G.Settings.Other["No TextLabels"]) or (_G.Settings.TextLabels and _G.Settings.TextLabels.Destroy) then
+            if _G.Settings.TextLabelSettings.Destroy then
                 Instance:Destroy()
             end
-        elseif Instance:IsA("Model") then
-            if _G.Settings["Low Quality Models"] or (_G.Settings.Other and _G.Settings.Other["Low Quality Models"]) then
-                Instance.LevelOfDetail = 1
-            end
         elseif Instance:IsA("MeshPart") then
-            if _G.Settings["Low Quality MeshParts"] or (_G.Settings.Other and _G.Settings.Other["Low Quality MeshParts"]) or (_G.Settings.MeshParts and _G.Settings.MeshParts.LowerQuality) then
+            if _G.Settings.MeshPartSettings.LowerQuality then
                 Instance.RenderFidelity = 2
                 Instance.Reflectance = 0
                 Instance.Material = Enum.Material.Plastic
             end
-            if _G.Settings["Invisible MeshParts"] or (_G.Settings.Other and _G.Settings.Other["Invisible MeshParts"]) or (_G.Settings.MeshParts and _G.Settings.MeshParts.Invisible) then
+            if _G.Settings.MeshPartSettings.Invisible then
                 Instance.Transparency = 1
-                Instance.RenderFidelity = 2
-                Instance.Reflectance = 0
-                Instance.Material = Enum.Material.Plastic
             end
-            if _G.Settings.MeshParts and _G.Settings.MeshParts.NoTexture then
+            if _G.Settings.MeshPartSettings.NoTexture then
                 Instance.TextureID = ""
             end
-            if _G.Settings.MeshParts and _G.Settings.MeshParts.NoMesh then
+            if _G.Settings.MeshPartSettings.NoMesh then
                 Instance.MeshId = ""
             end
-            if _G.Settings["No MeshParts"] or (_G.Settings.Other and _G.Settings.Other["No MeshParts"]) or (_G.Settings.MeshParts and _G.Settings.MeshParts.Destroy) then
+            if _G.Settings.MeshPartSettings.Destroy then
                 Instance:Destroy()
             end
         end
     end
 end
+
 coroutine.wrap(pcall)(function()
-    if (_G.Settings["Low Water Graphics"] or (_G.Settings.Other and _G.Settings.Other["Low Water Graphics"])) then
+    if _G.Settings.FPSBoostSettings["Low Water Graphics"] then
         if not workspace:FindFirstChildOfClass("Terrain") then
             repeat
                 task.wait()
@@ -203,8 +193,9 @@ coroutine.wrap(pcall)(function()
         end
     end
 end)
+
 coroutine.wrap(pcall)(function()
-    if _G.Settings["No Shadows"] or (_G.Settings.Other and _G.Settings.Other["No Shadows"]) then
+    if _G.Settings.FPSBoostSettings["No Shadows"] then
         Lighting.GlobalShadows = false
         Lighting.FogEnd = 9e9
         Lighting.ShadowSoftness = 0
@@ -218,8 +209,9 @@ coroutine.wrap(pcall)(function()
         end
     end
 end)
+
 coroutine.wrap(pcall)(function()
-    if _G.Settings["Low Rendering"] or (_G.Settings.Other and _G.Settings.Other["Low Rendering"]) then
+    if _G.Settings.FPSBoostSettings["Low Rendering"] then
         settings().Rendering.QualityLevel = 1
         settings().Rendering.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level04
         if _G.ConsoleLogs then
@@ -227,8 +219,9 @@ coroutine.wrap(pcall)(function()
         end
     end
 end)
+
 coroutine.wrap(pcall)(function()
-    if _G.Settings["Reset Materials"] or (_G.Settings.Other and _G.Settings.Other["Reset Materials"]) then
+    if _G.Settings.FPSBoostSettings["Reset Materials"] then
         for i, v in pairs(MaterialService:GetChildren()) do
             v:Destroy()
         end
@@ -238,15 +231,16 @@ coroutine.wrap(pcall)(function()
         end
     end
 end)
+
 coroutine.wrap(pcall)(function()
-    if _G.Settings["FPS Cap"] or (_G.Settings.Other and _G.Settings.Other["FPS Cap"]) then
+    if _G.Settings.FPSBoostSettings["FPS Cap"] then
         if setfpscap then
-            if type(_G.Settings["FPS Cap"] or (_G.Settings.Other and _G.Settings.Other["FPS Cap"])) == "string" or type(_G.Settings["FPS Cap"] or (_G.Settings.Other and _G.Settings.Other["FPS Cap"])) == "number" then
-                setfpscap(tonumber(_G.Settings["FPS Cap"] or (_G.Settings.Other and _G.Settings.Other["FPS Cap"])))
+            if type(_G.Settings.FPSBoostSettings["FPS Cap"]) == "string" or type(_G.Settings.FPSBoostSettings["FPS Cap"]) == "number" then
+                setfpscap(tonumber(_G.Settings.FPSBoostSettings["FPS Cap"]))
                 if _G.ConsoleLogs then
-                    warn("FPS Capped to " .. tostring(_G.Settings["FPS Cap"] or (_G.Settings.Other and _G.Settings.Other["FPS Cap"])))
+                    warn("FPS Capped to " .. tostring(_G.Settings.FPSBoostSettings["FPS Cap"]))
                 end
-            elseif _G.Settings["FPS Cap"] or (_G.Settings.Other and _G.Settings.Other["FPS Cap"]) == true then
+            elseif _G.Settings.FPSBoostSettings["FPS Cap"] == true then
                 setfpscap(1e6)
                 if _G.ConsoleLogs then
                     warn("FPS Uncapped")
@@ -257,10 +251,12 @@ coroutine.wrap(pcall)(function()
         end
     end
 end)
+
 game.DescendantAdded:Connect(function(value)
     wait(_G.LoadedWait or 1)
     CheckIfBad(value)
 end)
+
 local Descendants = game:GetDescendants()
 local StartNumber = _G.WaitPerAmount or 500
 local WaitNumber = _G.WaitPerAmount or 500
