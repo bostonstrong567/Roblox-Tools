@@ -17,42 +17,42 @@ if not game:IsLoaded() then
 end
 if not _G.Settings then
     _G.Settings = {
-        Players = {
+        PlayerSettings = {
             ["Ignore Me"] = true,
             ["Ignore Others"] = true,
             ["Ignore Tools"] = true
         },
-        Meshes = {
+        MesheSettings = {
             NoMesh = false,
             NoTexture = false,
             Destroy = false
         },
-        Images = {
+        ImageSettings = {
             Invisible = true,
             Destroy = false
         },
-        Explosions = {
+        ExplosionSettings = {
             Smaller = true,
             Invisible = false, -- Not recommended for PVP games
             Destroy = false -- Not recommended for PVP games
         },
-        Particles = {
+        ParticleSettings = {
             Invisible = true,
             Destroy = false
         },
-        TextLabels = {
+        TextLabelSettings = {
             LowerQuality = false,
             Invisible = false,
             Destroy = false
         },
-        MeshParts = {
+        MeshPartSettings = {
             LowerQuality = true,
             Invisible = false,
             NoTexture = false,
             NoMesh = false,
             Destroy = false
         },
-        Other = {
+        FPSBoostSettings = {
             ["FPS Cap"] = 240, -- Set this true to uncap FPS
             ["No Camera Effects"] = true,
             ["No Clothes"] = true,
