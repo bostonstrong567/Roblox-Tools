@@ -396,13 +396,24 @@ function FPSBoost:applyLowQualityParts()
     )
 end
 
-function FPSBoost:updateSettings(settingKey, value)
-    if self.FPSBoostSettings[settingKey] ~= nil then
-        self.FPSBoostSettings[settingKey] = value
-        self:initialize()
-    else
-        warn("Invalid settingKey:", settingKey)
+FPSBoost.applySettings = function(self, settingKey, className, applySetting, revertSetting)
+    if not self.OriginalSettings[settingKey] then
+        self.OriginalSettings[settingKey] = {}
     end
+
+    workspace.DescendantAdded:Connect(function(item)
+        if item:IsA(className) then
+            if self.FPSBoostSettings[settingKey] then
+                local originalSettings = applySetting(item)
+                table.insert(self.OriginalSettings[settingKey], {item = item, settings = originalSettings})
+            else
+                for _, data in pairs(self.OriginalSettings[settingKey]) do
+                    revertSetting(data)
+                end
+                self.OriginalSettings[settingKey] = {}
+            end
+        end
+    end)
 end
 
 function FPSBoost:initialize()
