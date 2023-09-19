@@ -229,10 +229,17 @@ function FPSBoost:CheckIfBad(instance)
                             end
                         end
                     end
-                    instance:Destroy()
+                    -- Adding a check to avoid removing essential components
+                    if instance.Name ~= "Crystal" then
+                        pcall(function()
+                            instance:Destroy()
+                        end)
+                    end
                 else
-                    self.originalInstanceSettings[instance][settingInfo.attribute] = instance[settingInfo.attribute]
-                    instance[settingInfo.attribute] = settingInfo.changeTo
+                    pcall(function()
+                        self.originalInstanceSettings[instance][settingInfo.attribute] = instance[settingInfo.attribute]
+                        instance[settingInfo.attribute] = settingInfo.changeTo
+                    end)
                 end
             end
         end
