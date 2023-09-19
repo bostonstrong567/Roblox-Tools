@@ -12,7 +12,7 @@ local connections = {}
 
 local function storeOriginalValues()
     local originalValues = {}
-    for _, v in pairs(workspace:FindPartsInRegion3(workspace:FindPartOnRay(Ray.new(workspace.Position, Vector3.new(0, -10000, 0)), nil, false).Position + Vector3.new(0, 10000, 0), nil, true)) do
+    for _, v in pairs(workspace:GetDescendants()) do
         if v:IsA("BasePart") then
             originalValues[v] = { Material = v.Material, Transparency = v.Transparency }
         elseif v:IsA("Decal") or v:IsA("Texture") then
