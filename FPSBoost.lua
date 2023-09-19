@@ -11,7 +11,7 @@ local workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
 
 FPSBoost.FPSBoostSettings = {
-    ["FPS Cap"] = true,
+    ["FPS Cap"] = 300,
     ["No Particles"] = false,
     ["No Camera Effects"] = false,
     ["No Explosions"] = false,
@@ -275,6 +275,14 @@ function FPSBoost:applyFPSCap()
     elseif settingsMapping.FPSCap.Cap then
         setfpscap(settingsMapping.FPSCap.Cap)
     end
+end
+
+function FPSBoost:updateSettings()
+    self:applyLowWaterGraphics()
+    self:applyNoShadows()
+    self:applyLowRendering()
+    self:applyFPSCap()
+    print("FPSBoost settings updated.")
 end
 
 function FPSBoost:initialize()
