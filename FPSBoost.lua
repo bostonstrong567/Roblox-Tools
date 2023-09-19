@@ -246,3 +246,4 @@ function FPSBoost:startFPSBoost()
     print("FPS Booster Loaded!")
     print("FPS Booster script fully initialized and running.")
 end
+return FPSBoost
