@@ -179,33 +179,6 @@ local StarterGui = game:GetService("StarterGui")
 local MaterialService = game:GetService("MaterialService")
 local workspace = game:GetService("Workspace")
 
-FPSBoost.originalSettings = {}
-
-function FPSBoost:setupOriginalSettings()
-    self.originalSettings = {
-        LowWaterGraphics = workspace:FindFirstChildOfClass("Terrain") and {
-            WaterWaveSize = workspace:FindFirstChildOfClass("Terrain").WaterWaveSize,
-            WaterWaveSpeed = workspace:FindFirstChildOfClass("Terrain").WaterWaveSpeed,
-            WaterReflectance = workspace:FindFirstChildOfClass("Terrain").WaterReflectance,
-            WaterTransparency = workspace:FindFirstChildOfClass("Terrain").WaterTransparency,
-            Decoration = sethiddenproperty and gethiddenproperty(workspace:FindFirstChildOfClass("Terrain"), "Decoration")
-        } or {},
-        NoShadows = {
-            GlobalShadows = Lighting.GlobalShadows,
-            FogEnd = Lighting.FogEnd,
-            ShadowSoftness = Lighting.ShadowSoftness,
-            Technology = sethiddenproperty and gethiddenproperty(Lighting, "Technology")
-        },
-        LowRendering = {
-            QualityLevel = settings().Rendering.QualityLevel,
-            MeshPartDetailLevel = settings().Rendering.MeshPartDetailLevel
-        },
-        FPSCap = {
-            Cap = setfpscap and getfpscap()
-        }
-    }
-end
-
 function FPSBoost:applyLowWaterGraphics()
     local terrain = workspace:FindFirstChildOfClass("Terrain")
     if terrain then
@@ -219,13 +192,13 @@ function FPSBoost:applyLowWaterGraphics()
             else
                 warn("Your exploit does not support sethiddenproperty, please use a different exploit.")
             end
-        elseif self.originalSettings.LowWaterGraphics.Decoration then
-            terrain.WaterWaveSize = self.originalSettings.LowWaterGraphics.WaterWaveSize
-            terrain.WaterWaveSpeed = self.originalSettings.LowWaterGraphics.WaterWaveSpeed
-            terrain.WaterReflectance = self.originalSettings.LowWaterGraphics.WaterReflectance
-            terrain.WaterTransparency = self.originalSettings.LowWaterGraphics.WaterTransparency
+        elseif self.originalInstanceSettings.LowWaterGraphics.Decoration then
+            terrain.WaterWaveSize = self.originalInstanceSettings.LowWaterGraphics.WaterWaveSize
+            terrain.WaterWaveSpeed = self.originalInstanceSettings.LowWaterGraphics.WaterWaveSpeed
+            terrain.WaterReflectance = self.originalInstanceSettings.LowWaterGraphics.WaterReflectance
+            terrain.WaterTransparency = self.originalInstanceSettings.LowWaterGraphics.WaterTransparency
             if sethiddenproperty then
-                sethiddenproperty(terrain, "Decoration", self.originalSettings.LowWaterGraphics.Decoration)
+                sethiddenproperty(terrain, "Decoration", self.originalInstanceSettings.LowWaterGraphics.Decoration)
             end
         end
     end
@@ -241,12 +214,12 @@ function FPSBoost:applyNoShadows()
         else
             warn("Your exploit does not support sethiddenproperty, please use a different exploit.")
         end
-    elseif self.originalSettings.NoShadows.Technology then
-        Lighting.GlobalShadows = self.originalSettings.NoShadows.GlobalShadows
-        Lighting.FogEnd = self.originalSettings.NoShadows.FogEnd
-        Lighting.ShadowSoftness = self.originalSettings.NoShadows.ShadowSoftness
+    elseif self.originalInstanceSettings.NoShadows.Technology then
+        Lighting.GlobalShadows = self.originalInstanceSettings.NoShadows.GlobalShadows
+        Lighting.FogEnd = self.originalInstanceSettings.NoShadows.FogEnd
+        Lighting.ShadowSoftness = self.originalInstanceSettings.NoShadows.ShadowSoftness
         if sethiddenproperty then
-            sethiddenproperty(Lighting, "Technology", self.originalSettings.NoShadows.Technology)
+            sethiddenproperty(Lighting, "Technology", self.originalInstanceSettings.NoShadows.Technology)
         end
     end
 end
@@ -256,8 +229,8 @@ function FPSBoost:applyLowRendering()
         settings().Rendering.QualityLevel = 1
         settings().Rendering.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level04
     else
-        settings().Rendering.QualityLevel = self.originalSettings.LowRendering.QualityLevel
-        settings().Rendering.MeshPartDetailLevel = self.originalSettings.LowRendering.MeshPartDetailLevel
+        settings().Rendering.QualityLevel = self.originalInstanceSettings.LowRendering.QualityLevel
+        settings().Rendering.MeshPartDetailLevel = self.originalInstanceSettings.LowRendering.MeshPartDetailLevel
     end
 end
 
@@ -265,19 +238,18 @@ function FPSBoost:applyFPSCap()
     local fpsCap = self.FPSBoostSettings["FPS Cap"]
     if fpsCap then
         if setfpscap then
-            local capValue = (type(fpsCap) == "number" or type(fpsCap) == "string") and tonumber(fpsCap) or (fpsCap == true and 1e6 or self.originalSettings.FPSCap.Cap)
+            local capValue = (type(fpsCap) == "number" or type(fpsCap) == "string") and tonumber(fpsCap) or (fpsCap == true and 1e6 or self.originalInstanceSettings.FPSCap.Cap)
             setfpscap(capValue)
             warn("FPS Capped to " .. tostring(capValue))
         else
             warn("FPS Cap Failed")
         end
-    elseif self.originalSettings.FPSCap.Cap then
-        setfpscap(self.originalSettings.FPSCap.Cap)
+    elseif self.originalInstanceSettings.FPSCap.Cap then
+        setfpscap(self.originalInstanceSettings.FPSCap.Cap)
     end
 end
 
 function FPSBoost:initialize()
-    FPSBoost:setupOriginalSettings()
     self:applyLowWaterGraphics()
     self:applyNoShadows()
     self:applyLowRendering()
