@@ -6,7 +6,7 @@ end
 
 local FPSBoost = {}
 local Players = game:GetService("Players")
-local ME = Players.LocalPlayer
+local player = Players.LocalPlayer
 local workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
 
@@ -69,7 +69,7 @@ end
 
 local function PartOfCharacter(Instance)
     for player, character in pairs(playerCharacters) do
-        if player ~= ME and character and Instance:IsDescendantOf(character) then
+        if player ~= player and character and Instance:IsDescendantOf(character) then
             return true
         end
     end
@@ -155,7 +155,7 @@ local function CheckIfBad(instance)
     if not instance:IsDescendantOf(Players) then
         local playerCharacter = PartOfCharacter(instance)
         local playerSettings = FPSBoost.AdvancedFPSBoostSettings.PlayerSettings
-        if (playerSettings["Ignore Me"] and ME.Character and instance:IsDescendantOf(ME.Character)) or 
+        if (playerSettings["Ignore Me"] and player.Character and instance:IsDescendantOf(player.Character)) or 
            (playerSettings["Ignore Others"] and playerCharacter) or 
            (playerSettings["Ignore Tools"] and (instance:IsA("BackpackItem") or instance:FindFirstAncestorWhichIsA("BackpackItem"))) then
             return
@@ -175,19 +175,19 @@ local function CheckIfBad(instance)
                 end
             end
         end
-        if Instance:IsA("BasePart") and FPSBoost.FPSBoostSettings["Low Quality Parts"] then
-            Instance.Material = Enum.Material.Plastic
-            Instance.Reflectance = 0
+        if instance:IsA("BasePart") and FPSBoost.FPSBoostSettings["Low Quality Parts"] then
+            instance.Material = Enum.Material.Plastic
+            instance.Reflectance = 0
         end
-        if Instance:IsA("MeshPart") then
+        if instance:IsA("MeshPart") then
             if FPSBoost.AdvancedFPSBoostSettings.MeshPartSettings.LowerQuality then
-                Instance.Reflectance = 0
-                Instance.Material = Enum.Material.Plastic
+                instance.Reflectance = 0
+                instance.Material = Enum.Material.Plastic
             end
             if FPSBoost.AdvancedFPSBoostSettings.MeshPartSettings.Invisible then
-                Instance.Transparency = 1
-                Instance.Reflectance = 0
-                Instance.Material = Enum.Material.Plastic
+                instance.Transparency = 1
+                instance.Reflectance = 0
+                instance.Material = Enum.Material.Plastic
             end
         end
     end
