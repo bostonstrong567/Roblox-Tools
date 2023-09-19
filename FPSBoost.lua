@@ -223,14 +223,14 @@ coroutine.wrap(function()
 end)()
 
 local function onDescendantAdded(descendant)
-    task.wait(FPSBoostSettings.OtherSettings.LoadedWait or 1)
+    task.wait(_G.FPSBoostSettings.OtherSettings.LoadedWait or 1)
     CheckIfBad(descendant)
 end
 
 game.DescendantAdded:Connect(onDescendantAdded)
 local descendants = game:GetDescendants()
-local startNumber = FPSBoostSettings.OtherSettings.WaitPerAmount or 500
-local waitNumber = FPSBoostSettings.OtherSettings.WaitPerAmount or 500
+local startNumber = _G.FPSBoostSettings.OtherSettings.WaitPerAmount or 500
+local waitNumber = startNumber
 
 for i, descendant in pairs(descendants) do
     CheckIfBad(descendant)
