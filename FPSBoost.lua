@@ -139,7 +139,7 @@ local function CheckIfBad(Instance)
             end
         elseif Instance:IsA("MeshPart") then
             if _G.AdvancedFPSBoostSettings.MeshPartSettings.LowerQuality then
-                Instance.RenderFidelity = Enum.RenderFidelity.Low
+                Instance.RenderFidelity = Enum.RenderFidelity.Performance
                 Instance.Material = Enum.Material.Plastic
                 Instance.Reflectance = 0
             end
