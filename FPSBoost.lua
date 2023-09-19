@@ -5,32 +5,6 @@ if not game:IsLoaded() then
 end
 
 local FPSBoost = {}
-FPSBoost.ObjectPool = {}
-
-function FPSBoost:createObjectPool(classType, initialSize)
-    local pool = {}
-    for i = 1, initialSize do
-        local obj = Instance.new(classType)
-        obj.Parent = nil
-        table.insert(pool, obj)
-    end
-    self.ObjectPool[classType] = pool
-end
-
-function FPSBoost:getObjectFromPool(classType)
-    local pool = self.ObjectPool[classType]
-    if #pool > 0 then
-        return table.remove(pool)
-    else
-        return Instance.new(classType)
-    end
-end
-
-function FPSBoost:returnObjectToPool(classType, obj)
-    obj.Parent = nil
-    table.insert(self.ObjectPool[classType], obj)
-end
-
 local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 local workspace = game:GetService("Workspace")
@@ -391,6 +365,7 @@ function FPSBoost:applyLowRendering()
     end
 end
 
+
 function FPSBoost:applyLowQualityParts()
     self:applySettings(
         "Low Quality Parts",
@@ -421,17 +396,15 @@ function FPSBoost:applyLowQualityParts()
     )
 end
 
-function FPSBoost:updateSettings()
-    self:applyLowWaterGraphics()
-    self:applyNoShadows()
-    self:applyLowRendering()
-    print("FPSBoost settings updated.")
-end
-
 function FPSBoost:initialize()
     self:applyLowWaterGraphics()
     self:applyNoShadows()
     self:applyLowRendering()
+    self:applyNoParticles()
+    self:applyNoCameraEffects()
+    self:applyNoExplosions()
+    self:applyNoClothes()
+    self:applyLowQualityParts()
 
     workspace.DescendantAdded:Connect(function(instance)
         CheckIfBad(instance)
