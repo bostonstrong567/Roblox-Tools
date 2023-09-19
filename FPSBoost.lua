@@ -222,24 +222,19 @@ function FPSBoost:CheckIfBad(instance)
                     self.originalInstanceSettings[instance] = {}
                 end
                 if settingInfo.method == "Destroy" then
-                    if instance:IsA("Part") or instance:IsA("MeshPart") then
-                        for _, child in ipairs(instance:GetChildren()) do
-                            if child:IsA("Trail") or child:IsA("Attachment") then
-                                child:Destroy()
+                    task.spawn(function()
+                        if instance:IsA("Part") or instance:IsA("MeshPart") then
+                            for _, child in ipairs(instance:GetChildren()) do
+                                if child:IsA("Trail") or child:IsA("Attachment") then
+                                    child:Destroy()
+                                end
                             end
                         end
-                    end
-                    -- Adding a check to avoid removing essential components
-                    if instance.Name ~= "Crystal" then
-                        pcall(function()
-                            instance:Destroy()
-                        end)
-                    end
-                else
-                    pcall(function()
-                        self.originalInstanceSettings[instance][settingInfo.attribute] = instance[settingInfo.attribute]
-                        instance[settingInfo.attribute] = settingInfo.changeTo
+                        instance:Destroy()
                     end)
+                else
+                    self.originalInstanceSettings[instance][settingInfo.attribute] = instance[settingInfo.attribute]
+                    instance[settingInfo.attribute] = settingInfo.changeTo
                 end
             end
         end
@@ -333,7 +328,9 @@ function FPSBoost:applyNoClothes()
         function(data)
             if data.item then
                 if self.FPSBoostSettings["No Clothes"] then
-                    data.item.Parent = nil
+                    task.spawn(function()
+                        data.item.Parent = nil
+                    end)
                 else
                     data.item.Parent = data.settings.Parent
                 end
