@@ -279,7 +279,7 @@ end
 
 FPSBoost:initialize(settingsMapping)
 
-return FPSBoostif not game:IsLoaded() then
+return FPSBoost if not game:IsLoaded() then
     repeat
         task.wait()
     until game:IsLoaded()
