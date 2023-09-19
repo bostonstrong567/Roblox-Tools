@@ -195,16 +195,13 @@ local function CheckIfBad(Instance)
             Instance.Material = Enum.Material.Plastic
             Instance.Reflectance = 0
         end
-
         if Instance:IsA("MeshPart") then
             if FPSBoost.AdvancedFPSBoostSettings.MeshPartSettings.LowerQuality then
-                Instance.RenderFidelity = Enum.RenderFidelity.Performance
                 Instance.Reflectance = 0
                 Instance.Material = Enum.Material.Plastic
             end
             if FPSBoost.AdvancedFPSBoostSettings.MeshPartSettings.Invisible then
                 Instance.Transparency = 1
-                Instance.RenderFidelity = Enum.RenderFidelity.Performance
                 Instance.Reflectance = 0
                 Instance.Material = Enum.Material.Plastic
             end
