@@ -224,26 +224,4 @@ coroutine.wrap(function()
     end
 end)()
 
-function FPSBoost:startFPSBoost()
-    local function onDescendantAdded(descendant)
-        task.wait(1)
-        CheckIfBad(descendant)
-    end
-
-    game.DescendantAdded:Connect(onDescendantAdded)
-    
-    local startNumber = 500
-    local waitNumber = startNumber
-
-    for i, descendant in pairs(game:GetDescendants()) do
-        CheckIfBad(descendant)
-        if i == waitNumber then
-            task.wait()
-            waitNumber = waitNumber + startNumber
-        end
-    end
-
-    print("FPS Booster Loaded!")
-    print("FPS Booster script fully initialized and running.")
-end
 return FPSBoost
