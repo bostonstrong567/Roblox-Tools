@@ -205,26 +205,6 @@ local StarterGui = game:GetService("StarterGui")
 local MaterialService = game:GetService("MaterialService")
 local workspace = game:GetService("Workspace")
 
-local function applySettings(settingKey, className, applySetting, revertSetting)
-    if not FPSBoost.OriginalSettings[settingKey] then
-        FPSBoost.OriginalSettings[settingKey] = {}
-    end
-
-    workspace.DescendantAdded:Connect(function(item)
-        if item:IsA(className) then
-            if FPSBoost.FPSBoostSettings[settingKey] then
-                local originalSettings = applySetting(item)
-                table.insert(FPSBoost.OriginalSettings[settingKey], {item = item, settings = originalSettings})
-            else
-                for _, data in pairs(FPSBoost.OriginalSettings[settingKey]) do
-                    revertSetting(data)
-                end
-                FPSBoost.OriginalSettings[settingKey] = {}
-            end
-        end
-    end)
-end
-
 function FPSBoost:applyNoParticles()
     self:applySettings(
         "No Particles",
@@ -365,6 +345,36 @@ function FPSBoost:applyLowRendering()
     end
 end
 
+function FPSBoost:applyLowQualityParts()
+    self:applySettings(
+        "Low Quality Parts",
+        function(item)
+            return item:IsA("Part") or item:IsA("MeshPart")
+        end,
+        function(item)
+            local originalSettings = {
+                Material = item.Material,
+                Reflectance = item.Reflectance
+            }
+            if item:IsA("MeshPart") then
+                originalSettings.TextureID = item.TextureID
+                originalSettings.MeshId = item.MeshId
+            end
+            return originalSettings
+        end,
+        function(data)
+            if data.item then
+                data.item.Material = data.settings.Material
+                data.item.Reflectance = data.settings.Reflectance
+                if data.item:IsA("MeshPart") then
+                    data.item.TextureID = data.settings.TextureID
+                    data.item.MeshId = data.settings.MeshId
+                end
+            end
+        end
+    )
+end
+
 function FPSBoost:updateSettings(key, value)
     if self.FPSBoostSettings[key] ~= nil then
         self.FPSBoostSettings[key] = value
@@ -397,55 +407,30 @@ function FPSBoost:updateSettings(key, value)
     end
 end
 
-function FPSBoost:applyLowQualityParts()
-    self:applySettings(
-        "Low Quality Parts",
-        function(item)
-            return item:IsA("Part") or item:IsA("MeshPart")
-        end,
-        function(item)
-            local originalSettings = {
-                Material = item.Material,
-                Reflectance = item.Reflectance
-            }
-            if item:IsA("MeshPart") then
-                originalSettings.TextureID = item.TextureID
-                originalSettings.MeshId = item.MeshId
-            end
-            return originalSettings
-        end,
-        function(data)
-            if data.item then
-                data.item.Material = data.settings.Material
-                data.item.Reflectance = data.settings.Reflectance
-                if data.item:IsA("MeshPart") then
-                    data.item.TextureID = data.settings.TextureID
-                    data.item.MeshId = data.settings.MeshId
-                end
-            end
-        end
-    )
-end
-
 FPSBoost.applySettings = function(self, settingKey, className, applySetting, revertSetting)
     if not self.OriginalSettings[settingKey] then
         self.OriginalSettings[settingKey] = {}
     end
 
     workspace.DescendantAdded:Connect(function(item)
-        if item:IsA(className) then
+        if item and item:IsA(className) then
             if self.FPSBoostSettings[settingKey] then
                 local originalSettings = applySetting(item)
-                table.insert(self.OriginalSettings[settingKey], {item = item, settings = originalSettings})
+                if originalSettings then
+                    table.insert(self.OriginalSettings[settingKey], {item = item, settings = originalSettings})
+                end
             else
                 for _, data in pairs(self.OriginalSettings[settingKey]) do
-                    revertSetting(data)
+                    if data and data.item and data.settings then
+                        revertSetting(data)
+                    end
                 end
                 self.OriginalSettings[settingKey] = {}
             end
         end
     end)
 end
+
 
 function FPSBoost:initialize()
     self:applyLowWaterGraphics()
