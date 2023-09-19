@@ -34,12 +34,15 @@ end
 FPSBoost.originalValues = storeOriginalValues()
 
 function FPSBoost:toggleLowQualityParts()
+    print("Toggling Low Quality Parts")  -- Added print statement
     for descendant, originalValues in pairs(self.originalValues) do
         if descendant:IsA("BasePart") and not descendant:IsA("Texture") then
             if self.settings.LowQualityParts then
+                print("Setting low quality settings for", descendant:GetFullName())  -- Added print statement
                 descendant.Material = Enum.Material.SmoothPlastic
                 descendant.Transparency = 1
             else
+                print("Restoring original settings for", descendant:GetFullName())  -- Added print statement
                 descendant.Material = originalValues.Material
                 descendant.Transparency = originalValues.Transparency
             end
