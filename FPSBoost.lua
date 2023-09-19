@@ -423,6 +423,9 @@ FPSBoost.applySettings = function(self, settingKey, className, applySetting, rev
                 for _, data in pairs(self.OriginalSettings[settingKey]) do
                     if data and data.item and data.settings then
                         revertSetting(data)
+                        if data.item then
+                            data.item:Destroy() -- Ensure that the item is destroyed
+                        end
                     end
                 end
                 self.OriginalSettings[settingKey] = {}
@@ -430,7 +433,6 @@ FPSBoost.applySettings = function(self, settingKey, className, applySetting, rev
         end
     end)
 end
-
 
 function FPSBoost:initialize()
     self:applyLowWaterGraphics()
