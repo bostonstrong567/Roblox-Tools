@@ -34,75 +34,99 @@ end
 FPSBoost.originalValues = storeOriginalValues()
 
 function FPSBoost:modifyDescendant(descendant)
-    if not self.originalValues[descendant] then
-        if descendant:IsA("BasePart") and not descendant:IsA("Texture") then
-            self.originalValues[descendant] = { Material = descendant.Material, Transparency = descendant.Transparency }
-        elseif descendant:IsA("Decal") or descendant:IsA("Texture") then
-            self.originalValues[descendant] = { Transparency = descendant.Transparency }
-        elseif descendant:IsA("Light") then
-            self.originalValues[descendant] = { Enabled = descendant.Enabled }
-        elseif descendant:IsA("ParticleEmitter") or descendant:IsA("Trail") then
-            self.originalValues[descendant] = { Enabled = descendant.Enabled }
-        end
-    end
+    local originalValues = self.originalValues[descendant]
 
     if descendant:IsA("BasePart") and not descendant:IsA("Texture") then
+        if not originalValues then
+            originalValues = { Material = descendant.Material, Transparency = descendant.Transparency }
+            self.originalValues[descendant] = originalValues
+        end
+
         if self.settings.LowQualityParts then
             descendant.Material = Enum.Material.SmoothPlastic
             descendant.Reflectance = 0
         else
-            descendant.Material = self.originalValues[descendant].Material
-            descendant.Transparency = self.originalValues[descendant].Transparency
+            descendant.Material = originalValues.Material
+            descendant.Transparency = originalValues.Transparency
         end
     end
 
-    if (descendant:IsA("Decal") or descendant:IsA("Texture")) and self.settings.RemoveDecalsAndTextures then
-        descendant.Transparency = 1
-    elseif self.originalValues[descendant] then
-        descendant.Transparency = self.originalValues[descendant].Transparency
+    if (descendant:IsA("Decal") or descendant:IsA("Texture")) then
+        if not originalValues then
+            originalValues = { Transparency = descendant.Transparency }
+            self.originalValues[descendant] = originalValues
+        end
+
+        if self.settings.RemoveDecalsAndTextures then
+            descendant.Transparency = 1
+        else
+            descendant.Transparency = originalValues.Transparency
+        end
     end
 
-    if (descendant:IsA("ParticleEmitter") or descendant:IsA("Trail")) and self.settings.DisableParticles then
-        descendant.Enabled = false
-    elseif descendant:IsA("ParticleEmitter") or descendant:IsA("Trail") then
-        descendant.Enabled = self.originalValues[descendant].Enabled
+    if (descendant:IsA("ParticleEmitter") or descendant:IsA("Trail")) then
+        if not originalValues then
+            originalValues = { Enabled = descendant.Enabled }
+            self.originalValues[descendant] = originalValues
+        end
+
+        if self.settings.DisableParticles then
+            descendant.Enabled = false
+        else
+            descendant.Enabled = originalValues.Enabled
+        end
     end
 
-    if descendant:IsA("Light") and self.settings.DisableLights then
-        descendant.Enabled = false
-    elseif descendant:IsA("Light") then
-        descendant.Enabled = self.originalValues[descendant].Enabled
+    if descendant:IsA("PointLight") or descendant:IsA("SpotLight") or descendant:IsA("SurfaceLight") then
+        if not originalValues then
+            originalValues = { Enabled = descendant.Enabled }
+            self.originalValues[descendant] = originalValues
+        end
+
+        if self.settings.DisableLights then
+            descendant.Enabled = false
+        else
+            descendant.Enabled = originalValues.Enabled
+        end
     end
 end
 
 function FPSBoost:applySettings()
-    for descendant, values in pairs(self.originalValues) do
-        if descendant and descendant:IsA("BasePart") and not descendant:IsA("Texture") then
-            if self.settings.LowQualityParts then
-                descendant.Material = Enum.Material.SmoothPlastic
-                descendant.Reflectance = 0
-            else
-                descendant.Material = values.Material
-                descendant.Transparency = values.Transparency
+    for descendant, originalValues in pairs(self.originalValues) do
+        if descendant then
+            if descendant:IsA("BasePart") and not descendant:IsA("Texture") then
+                if self.settings.LowQualityParts then
+                    descendant.Material = Enum.Material.SmoothPlastic
+                    descendant.Reflectance = 0
+                else
+                    descendant.Material = originalValues.Material
+                    descendant.Transparency = originalValues.Transparency
+                end
             end
-        end
 
-        if (descendant and descendant:IsA("Decal") or descendant:IsA("Texture")) and self.settings.RemoveDecalsAndTextures then
-            descendant.Transparency = 1
-        elseif descendant and values then
-            descendant.Transparency = values.Transparency
-        end
+            if (descendant:IsA("Decal") or descendant:IsA("Texture")) then
+                if self.settings.RemoveDecalsAndTextures then
+                    descendant.Transparency = 1
+                else
+                    descendant.Transparency = originalValues.Transparency
+                end
+            end
 
-        if (descendant and descendant:IsA("ParticleEmitter") or descendant:IsA("Trail")) and self.settings.DisableParticles then
-            descendant.Enabled = false
-        elseif descendant and values then
-            descendant.Enabled = values.Enabled
-        end
+            if (descendant:IsA("ParticleEmitter") or descendant:IsA("Trail")) then
+                if self.settings.DisableParticles then
+                    descendant.Enabled = false
+                else
+                    descendant.Enabled = originalValues.Enabled
+                end
+            end
 
-        if descendant and descendant:IsA("Light") and self.settings.DisableLights then
-            descendant.Enabled = false
-        elseif descendant and values then
-            descendant.Enabled = values.Enabled
+            if descendant:IsA("PointLight") or descendant:IsA("SpotLight") or descendant:IsA("SurfaceLight") then
+                if self.settings.DisableLights then
+                    descendant.Enabled = false
+                else
+                    descendant.Enabled = originalValues.Enabled
+                end
+            end
         end
     end
 
