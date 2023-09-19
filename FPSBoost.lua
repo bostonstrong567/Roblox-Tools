@@ -272,7 +272,11 @@ function FPSBoost:applyNoClothes()
         end,
         function(data)
             if data.item then
-                data.item.Parent = data.settings.Parent
+                if self.FPSBoostSettings["No Clothes"] then
+                    data.item.Parent = nil
+                else
+                    data.item.Parent = data.settings.Parent
+                end
             end
         end
     )
@@ -315,16 +319,26 @@ function FPSBoost:applyNoShadows()
     local noShadows = self.FPSBoostSettings["No Shadows"]
     local lightingSettings = settingsMapping.NoShadows
 
+    if not self.OriginalSettings.NoShadows then
+        self.OriginalSettings.NoShadows = {
+            GlobalShadows = Lighting.GlobalShadows,
+            FogEnd = Lighting.FogEnd,
+            ShadowSoftness = Lighting.ShadowSoftness,
+            Technology = gethiddenproperty(Lighting, "Technology")
+        }
+    end
+
     if noShadows then
         Lighting.GlobalShadows = false
         Lighting.FogEnd = 9e9
         Lighting.ShadowSoftness = 0
         sethiddenproperty(Lighting, "Technology", 2)
-    elseif lightingSettings.Technology then
-        Lighting.GlobalShadows = lightingSettings.GlobalShadows
-        Lighting.FogEnd = lightingSettings.FogEnd
-        Lighting.ShadowSoftness = lightingSettings.ShadowSoftness
-        sethiddenproperty(Lighting, "Technology", lightingSettings.Technology)
+    else
+        local original = self.OriginalSettings.NoShadows
+        Lighting.GlobalShadows = original.GlobalShadows
+        Lighting.FogEnd = original.FogEnd
+        Lighting.ShadowSoftness = original.ShadowSoftness
+        sethiddenproperty(Lighting, "Technology", original.Technology)
     end
 end
 
@@ -332,16 +346,26 @@ function FPSBoost:applyLowRendering()
     local lowRendering = self.FPSBoostSettings["Low Rendering"]
     local renderingSettings = settingsMapping.LowRendering
 
+    if not self.OriginalSettings.LowRendering then
+        self.OriginalSettings.LowRendering = {
+            QualityLevel = settings().Rendering.QualityLevel,
+            MeshPartDetailLevel = settings().Rendering.MeshPartDetailLevel,
+            WaterTransparency = workspace.Terrain.WaterTransparency,
+            WaterWaveSize = workspace.Terrain.WaterWaveSize
+        }
+    end
+
     if lowRendering then
         settings().Rendering.QualityLevel = 1
         settings().Rendering.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level04
         workspace.Terrain.WaterTransparency = 1
         workspace.Terrain.WaterWaveSize = 0
     else
-        settings().Rendering.QualityLevel = renderingSettings.QualityLevel
-        settings().Rendering.MeshPartDetailLevel = renderingSettings.MeshPartDetailLevel
-        workspace.Terrain.WaterTransparency = renderingSettings.WaterTransparency or 0.6
-        workspace.Terrain.WaterWaveSize = renderingSettings.WaterWaveSize or 8
+        local original = self.OriginalSettings.LowRendering
+        settings().Rendering.QualityLevel = original.QualityLevel
+        settings().Rendering.MeshPartDetailLevel = original.MeshPartDetailLevel
+        workspace.Terrain.WaterTransparency = original.WaterTransparency or 0.6
+        workspace.Terrain.WaterWaveSize = original.WaterWaveSize or 8
     end
 end
 
