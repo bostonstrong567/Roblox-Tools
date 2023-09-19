@@ -33,6 +33,14 @@ end
 
 FPSBoost.originalValues = storeOriginalValues()
 
+function FPSBoost:applySettings()
+    self:applyLowQualityParts()
+    self:applyRemoveDecalsAndTextures()
+    self:applyDisableParticles()
+    self:applyDisableLights()
+    self:applyDisableEffects()
+end
+
 function FPSBoost:toggleLowQualityParts()
     print("Toggling Low Quality Parts")  -- Add this line
     for descendant, originalValues in pairs(self.originalValues) do
