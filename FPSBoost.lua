@@ -135,11 +135,11 @@ local settingsMapping = {
         {setting = FPSBoost.AdvancedFPSBoostSettings.MeshPartSettings, condition = "Destroy", method = "Destroy"},
     },
     LowWaterGraphics = workspace:FindFirstChildOfClass("Terrain") and {
-            WaterWaveSize = workspace:FindFirstChildOfClass("Terrain").WaterWaveSize,
-            WaterWaveSpeed = workspace:FindFirstChildOfClass("Terrain").WaterWaveSpeed,
-            WaterReflectance = workspace:FindFirstChildOfClass("Terrain").WaterReflectance,
-            WaterTransparency = workspace:FindFirstChildOfClass("Terrain").WaterTransparency,
-            Decoration = sethiddenproperty and gethiddenproperty(workspace:FindFirstChildOfClass("Terrain"), "Decoration")
+        WaterWaveSize = workspace:FindFirstChildOfClass("Terrain").WaterWaveSize,
+        WaterWaveSpeed = workspace:FindFirstChildOfClass("Terrain").WaterWaveSpeed,
+        WaterReflectance = workspace:FindFirstChildOfClass("Terrain").WaterReflectance,
+        WaterTransparency = workspace:FindFirstChildOfClass("Terrain").WaterTransparency,
+        Decoration = sethiddenproperty and gethiddenproperty(workspace:FindFirstChildOfClass("Terrain"), "Decoration")
         } or {},
     NoShadows = {
             GlobalShadows = Lighting.GlobalShadows,
@@ -150,9 +150,6 @@ local settingsMapping = {
     LowRendering = {
             QualityLevel = settings().Rendering.QualityLevel,
             MeshPartDetailLevel = settings().Rendering.MeshPartDetailLevel
-        },
-    FPSCap = {
-            Cap = setfpscap
         }
 }
 
