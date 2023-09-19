@@ -179,6 +179,33 @@ local StarterGui = game:GetService("StarterGui")
 local MaterialService = game:GetService("MaterialService")
 local workspace = game:GetService("Workspace")
 
+FPSBoost.originalSettings = {}
+
+function FPSBoost:setupOriginalSettings()
+    self.originalSettings = {
+        LowWaterGraphics = workspace:FindFirstChildOfClass("Terrain") and {
+            WaterWaveSize = workspace:FindFirstChildOfClass("Terrain").WaterWaveSize,
+            WaterWaveSpeed = workspace:FindFirstChildOfClass("Terrain").WaterWaveSpeed,
+            WaterReflectance = workspace:FindFirstChildOfClass("Terrain").WaterReflectance,
+            WaterTransparency = workspace:FindFirstChildOfClass("Terrain").WaterTransparency,
+            Decoration = sethiddenproperty and gethiddenproperty(workspace:FindFirstChildOfClass("Terrain"), "Decoration")
+        } or {},
+        NoShadows = {
+            GlobalShadows = Lighting.GlobalShadows,
+            FogEnd = Lighting.FogEnd,
+            ShadowSoftness = Lighting.ShadowSoftness,
+            Technology = sethiddenproperty and gethiddenproperty(Lighting, "Technology")
+        },
+        LowRendering = {
+            QualityLevel = settings().Rendering.QualityLevel,
+            MeshPartDetailLevel = settings().Rendering.MeshPartDetailLevel
+        },
+        FPSCap = {
+            Cap = setfpscap and getfpscap()
+        }
+    }
+end
+
 function FPSBoost:applyLowWaterGraphics()
     local terrain = workspace:FindFirstChildOfClass("Terrain")
     if terrain then
@@ -250,6 +277,7 @@ function FPSBoost:applyFPSCap()
 end
 
 function FPSBoost:initialize()
+    self:setupOriginalSettings()
     self:applyLowWaterGraphics()
     self:applyNoShadows()
     self:applyLowRendering()
