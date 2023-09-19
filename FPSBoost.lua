@@ -205,21 +205,21 @@ local StarterGui = game:GetService("StarterGui")
 local MaterialService = game:GetService("MaterialService")
 local workspace = game:GetService("Workspace")
 
-function FPSBoost:applySettings(settingKey, className, applySetting, revertSetting)
-    if not self.OriginalSettings[settingKey] then
-        self.OriginalSettings[settingKey] = {}
+local function applySettings(settingKey, className, applySetting, revertSetting)
+    if not FPSBoost.OriginalSettings[settingKey] then
+        FPSBoost.OriginalSettings[settingKey] = {}
     end
 
     workspace.DescendantAdded:Connect(function(item)
         if item:IsA(className) then
-            if self.FPSBoostSettings[settingKey] then
+            if FPSBoost.FPSBoostSettings[settingKey] then
                 local originalSettings = applySetting(item)
-                table.insert(self.OriginalSettings[settingKey], {item = item, settings = originalSettings})
+                table.insert(FPSBoost.OriginalSettings[settingKey], {item = item, settings = originalSettings})
             else
-                for _, data in pairs(self.OriginalSettings[settingKey]) do
+                for _, data in pairs(FPSBoost.OriginalSettings[settingKey]) do
                     revertSetting(data)
                 end
-                self.OriginalSettings[settingKey] = {}
+                FPSBoost.OriginalSettings[settingKey] = {}
             end
         end
     end)
@@ -394,6 +394,11 @@ function FPSBoost:applyLowQualityParts()
             end
         end
     )
+end
+
+function FPSBoost:updateSettings(settingKey, value)
+    self.FPSBoostSettings[settingKey] = value
+    self:initialize()
 end
 
 function FPSBoost:initialize()
