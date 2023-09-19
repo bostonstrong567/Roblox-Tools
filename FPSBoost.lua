@@ -365,6 +365,37 @@ function FPSBoost:applyLowRendering()
     end
 end
 
+function FPSBoost:updateSettings(key, value)
+    if self.FPSBoostSettings[key] ~= nil then
+        self.FPSBoostSettings[key] = value
+    else
+        for category, settings in pairs(self.AdvancedFPSBoostSettings) do
+            if settings[key] ~= nil then
+                settings[key] = value
+                break
+            end
+        end
+    end
+    
+    -- Apply the updated settings
+    if key == "No Particles" then
+        self:applyNoParticles()
+    elseif key == "No Camera Effects" then
+        self:applyNoCameraEffects()
+    elseif key == "No Explosions" then
+        self:applyNoExplosions()
+    elseif key == "No Clothes" then
+        self:applyNoClothes()
+    elseif key == "Low Water Graphics" then
+        self:applyLowWaterGraphics()
+    elseif key == "No Shadows" then
+        self:applyNoShadows()
+    elseif key == "Low Rendering" then
+        self:applyLowRendering()
+    elseif key == "Low Quality Parts" then
+        self:applyLowQualityParts()
+    end
+end
 
 function FPSBoost:applyLowQualityParts()
     self:applySettings(
