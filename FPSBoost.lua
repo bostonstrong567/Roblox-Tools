@@ -1,13 +1,17 @@
 if not game:IsLoaded() then
     repeat
-        task.wait()
+        task.wait(0.1)
     until game:IsLoaded()
 end
 
 local FPSBoost = {}
+local Players = game:GetService("Players")
+local ME = Players.LocalPlayer
+local workspace = game:GetService("Workspace")
+local Lighting = game:GetService("Lighting")
 
 FPSBoost.FPSBoostSettings = {
-    ["FPS Cap"] = true, -- Set this true to uncap FPS,
+    ["FPS Cap"] = true,
     ["No Particles"] = false,
     ["No Camera Effects"] = false,
     ["No Explosions"] = false,
@@ -56,23 +60,16 @@ FPSBoost.AdvancedFPSBoostSettings = {
     },
 }
 
-local Players = game:GetService("Players")
-local ME = Players.LocalPlayer
-
 FPSBoost.originalInstanceSettings = {}
 
-local function PartOfCharacter(Instance)
-    for _, v in pairs(Players:GetPlayers()) do
-        if v ~= ME and v.Character and Instance:IsDescendantOf(v.Character) then
-            return true
-        end
-    end
-    return false
+local playerCharacters = {}
+for _, player in pairs(Players:GetPlayers()) do
+    playerCharacters[player] = player.Character
 end
 
-local function DescendantOfIgnore(Instance)
-    for i, v in pairs(_G.Ignore) do
-        if Instance:IsDescendantOf(v) then
+local function PartOfCharacter(Instance)
+    for player, character in pairs(playerCharacters) do
+        if player ~= ME and character and Instance:IsDescendantOf(character) then
             return true
         end
     end
@@ -134,60 +131,66 @@ local settingsMapping = {
         {setting = FPSBoost.AdvancedFPSBoostSettings.MeshPartSettings, attribute = "Transparency", condition = "Invisible", changeTo = 1, method = "ChangeAttribute", originalValue = 0},
         {setting = FPSBoost.AdvancedFPSBoostSettings.MeshPartSettings, condition = "Destroy", method = "Destroy"},
     },
-        LowWaterGraphics = workspace:FindFirstChildOfClass("Terrain") and {
-            WaterWaveSize = workspace:FindFirstChildOfClass("Terrain").WaterWaveSize,
-            WaterWaveSpeed = workspace:FindFirstChildOfClass("Terrain").WaterWaveSpeed,
-            WaterReflectance = workspace:FindFirstChildOfClass("Terrain").WaterReflectance,
-            WaterTransparency = workspace:FindFirstChildOfClass("Terrain").WaterTransparency,
-            Decoration = sethiddenproperty and gethiddenproperty(workspace:FindFirstChildOfClass("Terrain"), "Decoration")
-        } or {},
+
+    LowWaterGraphics = workspace:FindFirstChildOfClass("Terrain") and {
+        WaterWaveSize = workspace:FindFirstChildOfClass("Terrain").WaterWaveSize,
+        WaterWaveSpeed = workspace:FindFirstChildOfClass("Terrain").WaterWaveSpeed,
+        WaterReflectance = workspace:FindFirstChildOfClass("Terrain").WaterReflectance,
+        WaterTransparency = workspace:FindFirstChildOfClass("Terrain").WaterTransparency,
+        Decoration = sethiddenproperty and gethiddenproperty(workspace:FindFirstChildOfClass("Terrain"), "Decoration")
+    } or {},
         NoShadows = {
-            GlobalShadows = game.Lighting.GlobalShadows,
-            FogEnd = game.Lighting.FogEnd,
-            ShadowSoftness = game.Lighting.ShadowSoftness,
-            Technology = sethiddenproperty and gethiddenproperty(game.Lighting, "Technology")
-        },
-        LowRendering = {
-            QualityLevel = settings().Rendering.QualityLevel,
-            MeshPartDetailLevel = settings().Rendering.MeshPartDetailLevel
-        }
+        GlobalShadows = game.Lighting.GlobalShadows,
+        FogEnd = game.Lighting.FogEnd,
+        ShadowSoftness = game.Lighting.ShadowSoftness,
+        Technology = sethiddenproperty and gethiddenproperty(game.Lighting, "Technology")
+    },
+    LowRendering = {
+        QualityLevel = settings().Rendering.QualityLevel,
+        MeshPartDetailLevel = settings().Rendering.MeshPartDetailLevel
+    }
 }
 
+local function DescendantOfIgnore(Instance)
+    for i, v in pairs(_G.Ignore) do
+        if Instance:IsDescendantOf(v) then
+            return true
+        end
+    end
+    return false
+end
+
 local function CheckIfBad(Instance)
-    if not Instance:IsDescendantOf(Players) then
-        if FPSBoost.AdvancedFPSBoostSettings.PlayerSettings["Ignore Me"] and ME.Character and Instance:IsDescendantOf(ME.Character) then
-            return
-        end
-        if FPSBoost.AdvancedFPSBoostSettings.PlayerSettings["Ignore Others"] and PartOfCharacter(Instance) then
-            return
-        end
-        if FPSBoost.AdvancedFPSBoostSettings.PlayerSettings["Ignore Tools"] and (Instance:IsA("BackpackItem") or Instance:FindFirstAncestorWhichIsA("BackpackItem")) then
-            return
-        end
-        
-        for className, settings in pairs(settingsMapping) do
-            if Instance:IsA(className) then
-                for _, settingInfo in ipairs(settings) do
-                    if settingInfo.setting[settingInfo.condition] then
-                        if not FPSBoost.originalInstanceSettings[tostring(Instance)] then
-                            FPSBoost.originalInstanceSettings[tostring(Instance)] = {}
-                        end
-                        if settingInfo.method == "Destroy" then
-                            Instance:Destroy()
-                        else
-                            FPSBoost.originalInstanceSettings[tostring(Instance)][settingInfo.attribute] = Instance[settingInfo.attribute]
-                            Instance[settingInfo.attribute] = settingInfo.changeTo
-                        end
+    if Instance:IsDescendantOf(Players) then return end
+
+    local ignoreCondition = (FPSBoost.AdvancedFPSBoostSettings.PlayerSettings["Ignore Me"] and ME.Character and Instance:IsDescendantOf(ME.Character)) or 
+                            (FPSBoost.AdvancedFPSBoostSettings.PlayerSettings["Ignore Others"] and PartOfCharacter(Instance)) or 
+                            (FPSBoost.AdvancedFPSBoostSettings.PlayerSettings["Ignore Tools"] and (Instance:IsA("BackpackItem") or Instance:FindFirstAncestorWhichIsA("BackpackItem")))
+
+    if ignoreCondition then return end
+
+    for className, settings in pairs(settingsMapping) do
+        if Instance:IsA(className) then
+            for _, settingInfo in ipairs(settings) do
+                if settingInfo.setting[settingInfo.condition] then
+                    local instanceSettings = FPSBoost.originalInstanceSettings[tostring(Instance)] or {}
+                    FPSBoost.originalInstanceSettings[tostring(Instance)] = instanceSettings
+                    
+                    if settingInfo.method == "Destroy" then
+                        Instance:Destroy()
+                    else
+                        instanceSettings[settingInfo.attribute] = Instance[settingInfo.attribute]
+                        Instance[settingInfo.attribute] = settingInfo.changeTo
                     end
                 end
-                break
             end
+            break
         end
+    end
 
-        if Instance:IsA("BasePart") and FPSBoost.FPSBoostSettings["Low Quality Parts"] then
-            Instance.Material = Enum.Material.Plastic
-            Instance.Reflectance = 0
-        end
+    if Instance:IsA("BasePart") and FPSBoost.FPSBoostSettings["Low Quality Parts"] then
+        Instance.Material = Enum.Material.Plastic
+        Instance.Reflectance = 0
     end
 end
 
@@ -199,68 +202,61 @@ local workspace = game:GetService("Workspace")
 function FPSBoost:applyLowWaterGraphics()
     local terrain = workspace:FindFirstChildOfClass("Terrain")
     if terrain then
-        if self.FPSBoostSettings["Low Water Graphics"] then
+        local lowWaterGraphics = self.FPSBoostSettings["Low Water Graphics"]
+        local terrainSettings = settingsMapping.LowWaterGraphics
+
+        if lowWaterGraphics then
             terrain.WaterWaveSize = 0
             terrain.WaterWaveSpeed = 0
             terrain.WaterReflectance = 0
             terrain.WaterTransparency = 0
-            if sethiddenproperty then
-                sethiddenproperty(terrain, "Decoration", false)
-            else
-                warn("Your exploit does not support sethiddenproperty, please use a different exploit.")
-            end
-        elseif settingsMapping.LowWaterGraphics.Decoration then
-            terrain.WaterWaveSize = settingsMapping.LowWaterGraphics.WaterWaveSize
-            terrain.WaterWaveSpeed = settingsMapping.LowWaterGraphics.WaterWaveSpeed
-            terrain.WaterReflectance = settingsMapping.LowWaterGraphics.WaterReflectance
-            terrain.WaterTransparency = settingsMapping.LowWaterGraphics.WaterTransparency
-            if sethiddenproperty then
-                sethiddenproperty(terrain, "Decoration", settingsMapping.LowWaterGraphics.Decoration)
-            end
+            sethiddenproperty(terrain, "Decoration", false)
+        elseif terrainSettings.Decoration then
+            terrain.WaterWaveSize = terrainSettings.WaterWaveSize
+            terrain.WaterWaveSpeed = terrainSettings.WaterWaveSpeed
+            terrain.WaterReflectance = terrainSettings.WaterReflectance
+            terrain.WaterTransparency = terrainSettings.WaterTransparency
+            sethiddenproperty(terrain, "Decoration", terrainSettings.Decoration)
         end
     end
 end
 
 function FPSBoost:applyNoShadows()
-    if self.FPSBoostSettings["No Shadows"] then
+    local noShadows = self.FPSBoostSettings["No Shadows"]
+    local lightingSettings = settingsMapping.NoShadows
+
+    if noShadows then
         Lighting.GlobalShadows = false
         Lighting.FogEnd = 9e9
         Lighting.ShadowSoftness = 0
-        if sethiddenproperty then
-            sethiddenproperty(Lighting, "Technology", 2)
-        else
-            warn("Your exploit does not support sethiddenproperty, please use a different exploit.")
-        end
-    elseif settingsMapping.NoShadows.Technology then
-        Lighting.GlobalShadows = settingsMapping.NoShadows.GlobalShadows
-        Lighting.FogEnd = settingsMapping.NoShadows.FogEnd
-        Lighting.ShadowSoftness = settingsMapping.NoShadows.ShadowSoftness
-        if sethiddenproperty then
-            sethiddenproperty(Lighting, "Technology", settingsMapping.NoShadows.Technology)
-        end
+        sethiddenproperty(Lighting, "Technology", 2)
+    elseif lightingSettings.Technology then
+        Lighting.GlobalShadows = lightingSettings.GlobalShadows
+        Lighting.FogEnd = lightingSettings.FogEnd
+        Lighting.ShadowSoftness = lightingSettings.ShadowSoftness
+        sethiddenproperty(Lighting, "Technology", lightingSettings.Technology)
     end
 end
 
 function FPSBoost:applyLowRendering()
-    if self.FPSBoostSettings["Low Rendering"] then
+    local lowRendering = self.FPSBoostSettings["Low Rendering"]
+    local renderingSettings = settingsMapping.LowRendering
+
+    if lowRendering then
         settings().Rendering.QualityLevel = 1
         settings().Rendering.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level04
     else
-        settings().Rendering.QualityLevel = settingsMapping.LowRendering.QualityLevel
-        settings().Rendering.MeshPartDetailLevel = settingsMapping.LowRendering.MeshPartDetailLevel
+        settings().Rendering.QualityLevel = renderingSettings.QualityLevel
+        settings().Rendering.MeshPartDetailLevel = renderingSettings.MeshPartDetailLevel
     end
 end
 
 function FPSBoost:applyFPSCap()
     local fpsCap = self.FPSBoostSettings["FPS Cap"]
+    local capValue = (type(fpsCap) == "number" or type(fpsCap) == "string") and tonumber(fpsCap) or (fpsCap == true and 1e6 or settingsMapping.FPSCap.Cap)
+    
     if fpsCap then
-        if setfpscap then
-            local capValue = (type(fpsCap) == "number" or type(fpsCap) == "string") and tonumber(fpsCap) or (fpsCap == true and 1e6 or settingsMapping.FPSCap.Cap)
-            setfpscap(capValue)
-            warn("FPS Capped to " .. tostring(capValue))
-        else
-            warn("FPS Cap Failed")
-        end
+        setfpscap(capValue)
     elseif settingsMapping.FPSCap.Cap then
         setfpscap(settingsMapping.FPSCap.Cap)
     end
@@ -277,6 +273,6 @@ function FPSBoost:initialize()
     end)
 end
 
-FPSBoost:initialize(settingsMapping)
+FPSBoost:initialize()
 
 return FPSBoost
