@@ -57,6 +57,7 @@ _G.AdvancedFPSBoostSettings ={
     },
 }
 
+
 local function PartOfCharacter(Instance)
     for _, v in pairs(Players:GetPlayers()) do
         if v ~= ME and v.Character and Instance:IsDescendantOf(v.Character) then
@@ -77,80 +78,80 @@ end
 
 local function CheckIfBad(Instance)
     if not Instance:IsDescendantOf(Players) then
-        if FPSBoostSettings.PlayerSettings["Ignore Me"] and ME.Character and Instance:IsDescendantOf(ME.Character) then
+        if _G.AdvancedFPSBoostSettings.PlayerSettings["Ignore Me"] and ME.Character and Instance:IsDescendantOf(ME.Character) then
             return
         end
-        if FPSBoostSettings.PlayerSettings["Ignore Others"] and PartOfCharacter(Instance) then
+        if _G.AdvancedFPSBoostSettings.PlayerSettings["Ignore Others"] and PartOfCharacter(Instance) then
             return
         end
-        if FPSBoostSettings.PlayerSettings["Ignore Tools"] and (Instance:IsA("BackpackItem") or Instance:FindFirstAncestorWhichIsA("BackpackItem")) then
+        if _G.AdvancedFPSBoostSettings.PlayerSettings["Ignore Tools"] and (Instance:IsA("BackpackItem") or Instance:FindFirstAncestorWhichIsA("BackpackItem")) then
             return
         end
 
         if Instance:IsA("DataModelMesh") then
-            if FPSBoostSettings.MeshSettings.NoMesh and Instance:IsA("SpecialMesh") then
+            if _G.AdvancedFPSBoostSettings.MeshSettings.NoMesh and Instance:IsA("SpecialMesh") then
                 Instance.MeshId = ""
             end
-            if FPSBoostSettings.MeshSettings.NoTexture and Instance:IsA("SpecialMesh") then
+            if _G.AdvancedFPSBoostSettings.MeshSettings.NoTexture and Instance:IsA("SpecialMesh") then
                 Instance.TextureId = ""
             end
-            if FPSBoostSettings.MeshSettings.Destroy then
+            if _G.AdvancedFPSBoostSettings.MeshSettings.Destroy then
                 Instance:Destroy()
             end
         elseif Instance:IsA("ImageLabel") or Instance:IsA("ImageButton") then
-            if FPSBoostSettings.ImageSettings.Invisible then
+            if _G.AdvancedFPSBoostSettings.ImageSettings.Invisible then
                 Instance.ImageTransparency = 1
             end
-            if FPSBoostSettings.ImageSettings.Destroy then
+            if _G.AdvancedFPSBoostSettings.ImageSettings.Destroy then
                 Instance:Destroy()
             end
         elseif Instance:IsA("Explosion") then
-            if FPSBoostSettings.ExplosionSettings.Smaller then
+            if _G.AdvancedFPSBoostSettings.ExplosionSettings.Smaller then
                 Instance.BlastPressure = 1
                 Instance.BlastRadius = 1
             end
-            if FPSBoostSettings.ExplosionSettings.Invisible then
+            if _G.AdvancedFPSBoostSettings.ExplosionSettings.Invisible then
                 Instance.Visible = false
             end
-            if FPSBoostSettings.ExplosionSettings.Destroy then
+            if _G.AdvancedFPSBoostSettings.ExplosionSettings.Destroy then
                 Instance:Destroy()
             end
         elseif Instance:IsA("ParticleEmitter") or Instance:IsA("Trail") or Instance:IsA("Smoke") or Instance:IsA("Fire") or Instance:IsA("Sparkles") then
-            if FPSBoostSettings.ParticleSettings.Invisible then
+            if _G.AdvancedFPSBoostSettings.ParticleSettings.Invisible then
                 Instance.Enabled = false
             end
-            if FPSBoostSettings.ParticleSettings.Destroy then
+            if _G.AdvancedFPSBoostSettings.ParticleSettings.Destroy then
                 Instance:Destroy()
             end
         elseif Instance:IsA("TextLabel") then
-            if FPSBoostSettings.TextLabelSettings.LowerQuality then
+            if _G.AdvancedFPSBoostSettings.TextLabelSettings.LowerQuality then
                 Instance.Font = Enum.Font.SourceSans
                 Instance.TextScaled = false
                 Instance.RichText = false
                 Instance.TextSize = 14
             end
-            if FPSBoostSettings.TextLabelSettings.Invisible then
+            if _G.AdvancedFPSBoostSettings.TextLabelSettings.Invisible then
                 Instance.Visible = false
             end
-            if FPSBoostSettings.TextLabelSettings.Destroy then
+            if _G.AdvancedFPSBoostSettings.TextLabelSettings.Destroy then
                 Instance:Destroy()
             end
         elseif Instance:IsA("MeshPart") then
-            if FPSBoostSettings.MeshPartSettings.LowerQuality then
+            if _G.AdvancedFPSBoostSettings.MeshPartSettings.LowerQuality then
                 Instance.RenderFidelity = Enum.RenderFidelity.Low
                 Instance.Material = Enum.Material.Plastic
                 Instance.Reflectance = 0
             end
-            if FPSBoostSettings.MeshPartSettings.Invisible then
+            if _G.AdvancedFPSBoostSettings.MeshPartSettings.Invisible then
                 Instance.Transparency = 1
             end
-            if FPSBoostSettings.MeshPartSettings.NoTexture then
+            if _G.AdvancedFPSBoostSettings.MeshPartSettings.NoTexture then
                 Instance.TextureID = ""
             end
-            if FPSBoostSettings.MeshPartSettings.NoMesh then
+            if _G.AdvancedFPSBoostSettings.MeshPartSettings.NoMesh then
                 Instance.MeshId = ""
             end
-            if FPSBoostSettings.MeshPartSettings.Destroy then
+            if _G.AdvancedFPSBoostSettings.MeshPartSettings.Destroy then
                 Instance:Destroy()
             end
         elseif Instance:IsA("BasePart") and FPSBoostSettings.OtherSettings["Low Quality Parts"] then
