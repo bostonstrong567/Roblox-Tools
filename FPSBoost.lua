@@ -151,46 +151,30 @@ local settingsMapping = {
     }
 }
 
-local function DescendantOfIgnore(Instance)
-    for i, v in pairs(_G.Ignore) do
-        if Instance:IsDescendantOf(v) then
-            return true
+local function CheckIfBad(instance)
+    if not instance:IsDescendantOf(Players) then
+        local playerCharacter = PartOfCharacter(instance)
+        local playerSettings = FPSBoost.AdvancedFPSBoostSettings.PlayerSettings
+        if (playerSettings["Ignore Me"] and ME.Character and instance:IsDescendantOf(ME.Character)) or 
+           (playerSettings["Ignore Others"] and playerCharacter) or 
+           (playerSettings["Ignore Tools"] and (instance:IsA("BackpackItem") or instance:FindFirstAncestorWhichIsA("BackpackItem"))) then
+            return
         end
-    end
-    return false
-end
 
-local function CheckIfBad(Instance)
-    if not Instance:IsDescendantOf(Players) then
-        if FPSBoost.AdvancedFPSBoostSettings.PlayerSettings["Ignore Me"] and ME.Character and Instance:IsDescendantOf(ME.Character) then
-            return
-        end
-        if FPSBoost.AdvancedFPSBoostSettings.PlayerSettings["Ignore Others"] and PartOfCharacter(Instance) then
-            return
-        end
-        if FPSBoost.AdvancedFPSBoostSettings.PlayerSettings["Ignore Tools"] and (Instance:IsA("BackpackItem") or Instance:FindFirstAncestorWhichIsA("BackpackItem")) then
-            return
-        end
-        
-        for className, settings in pairs(settingsMapping) do
-            if Instance:IsA(className) then
-                for _, settingInfo in ipairs(settings) do
-                    if settingInfo.setting[settingInfo.condition] then
-                        if not FPSBoost.originalInstanceSettings[tostring(Instance)] then
-                            FPSBoost.originalInstanceSettings[tostring(Instance)] = {}
-                        end
-                        if settingInfo.method == "Destroy" then
-                            Instance:Destroy()
-                        else
-                            FPSBoost.originalInstanceSettings[tostring(Instance)][settingInfo.attribute] = Instance[settingInfo.attribute]
-                            Instance[settingInfo.attribute] = settingInfo.changeTo
-                        end
-                    end
+        local settingsToCheck = settingsMapping[instance.ClassName] or {}
+        for _, settingInfo in ipairs(settingsToCheck) do
+            if settingInfo.setting[settingInfo.condition] then
+                if not FPSBoost.originalInstanceSettings[instance] then
+                    FPSBoost.originalInstanceSettings[instance] = {}
                 end
-                break
+                if settingInfo.method == "Destroy" then
+                    instance:Destroy()
+                else
+                    FPSBoost.originalInstanceSettings[instance][settingInfo.attribute] = instance[settingInfo.attribute]
+                    instance[settingInfo.attribute] = settingInfo.changeTo
+                end
             end
         end
-
         if Instance:IsA("BasePart") and FPSBoost.FPSBoostSettings["Low Quality Parts"] then
             Instance.Material = Enum.Material.Plastic
             Instance.Reflectance = 0
@@ -213,6 +197,99 @@ local Lighting = game:GetService("Lighting")
 local StarterGui = game:GetService("StarterGui")
 local MaterialService = game:GetService("MaterialService")
 local workspace = game:GetService("Workspace")
+
+function FPSBoost:applySettings(settingKey, className, applySetting, revertSetting)
+    if not self.OriginalSettings[settingKey] then
+        self.OriginalSettings[settingKey] = {}
+    end
+
+    workspace.DescendantAdded:Connect(function(item)
+        if item:IsA(className) then
+            if self.FPSBoostSettings[settingKey] then
+                local originalSettings = applySetting(item)
+                table.insert(self.OriginalSettings[settingKey], {item = item, settings = originalSettings})
+            else
+                for _, data in pairs(self.OriginalSettings[settingKey]) do
+                    revertSetting(data)
+                end
+                self.OriginalSettings[settingKey] = {}
+            end
+        end
+    end)
+end
+
+function FPSBoost:applyNoParticles()
+    self:applySettings(
+        "No Particles",
+        function(item)
+            return item:IsA("ParticleEmitter") or item:IsA("Trail")
+        end,
+        function(item)
+            return {Enabled = item.Enabled}
+        end,
+        function(data)
+            if data.item and data.item:IsA("BasePart") then
+                data.item.Enabled = data.settings.Enabled
+            end
+        end
+    )
+end
+
+function FPSBoost:applyNoCameraEffects()
+    self:applySettings(
+        "No Camera Effects",
+        function(item)
+            return false  -- This function does not apply to any specific item type
+        end,
+        function()
+            return {CoreGuiEnabled = StarterGui:GetCoreGuiEnabled(Enum.CoreGuiType.All)}
+        end,
+        function(data)
+            StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.All, data.settings.CoreGuiEnabled)
+        end,
+        true  -- Indicates that this function does not apply to workspace descendants
+    )
+end
+
+function FPSBoost:applyNoExplosions()
+    self:applySettings(
+        "No Explosions",
+        function(item)
+            return item:IsA("Explosion")
+        end,
+        function(item)
+            return {
+                Visible = item.Visible,
+                BlastPressure = item.BlastPressure,
+                BlastRadius = item.BlastRadius
+            }
+        end,
+        function(data)
+            if data.item and data.item:IsA("Explosion") then
+                data.item.Visible = data.settings.Visible
+                data.item.BlastPressure = data.settings.BlastPressure
+                data.item.BlastRadius = data.settings.BlastRadius
+            end
+        end
+    )
+end
+
+function FPSBoost:applyNoClothes()
+    self:applySettings(
+        "No Clothes",
+        function(item)
+            return item:IsA("Clothing") or item:IsA("Pants") or item:IsA("Shirt")
+        end,
+        function(item)
+            return {Parent = item.Parent}
+        end,
+        function(data)
+            if data.item then
+                data.item.Parent = data.settings.Parent
+            end
+        end
+    )
+end
 
 function FPSBoost:applyLowWaterGraphics()
     local terrain = workspace:FindFirstChildOfClass("Terrain")
@@ -277,151 +354,34 @@ function FPSBoost:applyLowRendering()
     end
 end
 
-function FPSBoost:applyNoParticles()
-    if not self.OriginalSettings.NoParticles then
-        self.OriginalSettings.NoParticles = {}
-    end
-
-    if self.FPSBoostSettings["No Particles"] then
-        for _, particle in pairs(workspace:FindPartsInRegion3(workspace:FindPartOnRay(Ray.new(workspace.Position, (workspace.Size + Vector3.new(1, 1, 1)) * 2)), nil, false)) do
-            if particle:IsA("ParticleEmitter") or particle:IsA("Trail") then
-                table.insert(self.OriginalSettings.NoParticles, {particle = particle, state = particle.Enabled})
-                
-                if self.AdvancedFPSBoostSettings.ParticleSettings.Destroy then
-                    particle:Destroy()
-                else
-                    particle.Enabled = not self.AdvancedFPSBoostSettings.ParticleSettings.Invisible
-                end
-            end
-        end
-    else
-        for _, data in pairs(self.OriginalSettings.NoParticles) do
-            if data.particle and data.particle:IsA("BasePart") then  -- Check if the particle still exists
-                data.particle.Enabled = data.state
-            end
-        end
-        self.OriginalSettings.NoParticles = {}  -- Clear the original settings after reverting
-    end
-end
-
-function FPSBoost:applyNoCameraEffects()
-    local StarterGui = game:GetService("StarterGui")
-    
-    if not self.OriginalSettings.NoCameraEffects then
-        self.OriginalSettings.NoCameraEffects = StarterGui:GetCoreGuiEnabled(Enum.CoreGuiType.All)
-    end
-    
-    if self.FPSBoostSettings["No Camera Effects"] then
-        StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.All, false)
-    else
-        StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.All, self.OriginalSettings.NoCameraEffects)
-    end
-end
-
-
-function FPSBoost:applyNoExplosions()
-    if not self.OriginalSettings.NoExplosions then
-        self.OriginalSettings.NoExplosions = {}
-    end
-
-    workspace.DescendantAdded:Connect(function(item)
-        if item:IsA("Explosion") then
-            if self.FPSBoostSettings["No Explosions"] then
-                local originalSettings = {
-                    Visible = item.Visible,
-                    BlastPressure = item.BlastPressure,
-                    BlastRadius = item.BlastRadius
-                }
-                table.insert(self.OriginalSettings.NoExplosions, {item = item, settings = originalSettings})
-
-                if self.AdvancedFPSBoostSettings.ExplosionSettings.Destroy then
-                    item:Destroy()
-                else
-                    item.Visible = not self.AdvancedFPSBoostSettings.ExplosionSettings.Invisible
-                    item.BlastPressure = self.AdvancedFPSBoostSettings.ExplosionSettings.Smaller and 1 or item.BlastPressure
-                    item.BlastRadius = self.AdvancedFPSBoostSettings.ExplosionSettings.Smaller and 1 or item.BlastRadius
-                end
-            else
-                for _, data in pairs(self.OriginalSettings.NoExplosions) do
-                    if data.item and data.item:IsA("Explosion") then
-                        data.item.Visible = data.settings.Visible
-                        data.item.BlastPressure = data.settings.BlastPressure
-                        data.item.BlastRadius = data.settings.BlastRadius
-                    end
-                end
-                self.OriginalSettings.NoExplosions = {}
-            end
-        end
-    end)
-end
-
-function FPSBoost:applyNoClothes()
-    if not self.OriginalSettings.NoClothes then
-        self.OriginalSettings.NoClothes = {}
-    end
-
-    workspace.DescendantAdded:Connect(function(item)
-        if item:IsA("Clothing") or item:IsA("Pants") or item:IsA("Shirt") then
-            if self.FPSBoostSettings["No Clothes"] then
-                local originalParent = item.Parent
-                table.insert(self.OriginalSettings.NoClothes, {item = item, parent = originalParent})
-                item:Destroy()
-            else
-                for _, data in pairs(self.OriginalSettings.NoClothes) do
-                    if data.item then
-                        data.item.Parent = data.parent
-                    end
-                end
-                self.OriginalSettings.NoClothes = {}
-            end
-        end
-    end)
-end
-
 function FPSBoost:applyLowQualityParts()
-    if not self.OriginalSettings.LowQualityParts then
-        self.OriginalSettings.LowQualityParts = {}
-    end
-
-    workspace.DescendantAdded:Connect(function(item)
-        if item:IsA("Part") or item:IsA("MeshPart") then
-            if self.FPSBoostSettings["Low Quality Parts"] then
-                local originalSettings = {
-                    Material = item.Material,
-                    Reflectance = item.Reflectance,
-                    TextureID = item:IsA("MeshPart") and item.TextureID or nil,
-                    MeshId = item:IsA("MeshPart") and item.MeshId or nil
-                }
-                table.insert(self.OriginalSettings.LowQualityParts, {item = item, settings = originalSettings})
-
-                if self.AdvancedFPSBoostSettings.MeshPartSettings.LowerQuality then
-                    item.Material = Enum.Material.Plastic
-                    item.Reflectance = 0
+    self:applySettings(
+        "Low Quality Parts",
+        function(item)
+            return item:IsA("Part") or item:IsA("MeshPart")
+        end,
+        function(item)
+            local originalSettings = {
+                Material = item.Material,
+                Reflectance = item.Reflectance
+            }
+            if item:IsA("MeshPart") then
+                originalSettings.TextureID = item.TextureID
+                originalSettings.MeshId = item.MeshId
+            end
+            return originalSettings
+        end,
+        function(data)
+            if data.item then
+                data.item.Material = data.settings.Material
+                data.item.Reflectance = data.settings.Reflectance
+                if data.item:IsA("MeshPart") then
+                    data.item.TextureID = data.settings.TextureID
+                    data.item.MeshId = data.settings.MeshId
                 end
-                if self.AdvancedFPSBoostSettings.MeshPartSettings.NoTexture then
-                    item.TextureID = ""
-                end
-                if self.AdvancedFPSBoostSettings.MeshPartSettings.NoMesh and item:IsA("MeshPart") then
-                    item.MeshId = ""
-                end
-                if self.AdvancedFPSBoostSettings.MeshPartSettings.Destroy then
-                    item:Destroy()
-                end
-            else
-                for _, data in pairs(self.OriginalSettings.LowQualityParts) do
-                    if data.item then
-                        data.item.Material = data.settings.Material
-                        data.item.Reflectance = data.settings.Reflectance
-                        if data.item:IsA("MeshPart") then
-                            data.item.TextureID = data.settings.TextureID
-                            data.item.MeshId = data.settings.MeshId
-                        end
-                    end
-                end
-                self.OriginalSettings.LowQualityParts = {}
             end
         end
-    end)
+    )
 end
 
 function FPSBoost:updateSettings()
