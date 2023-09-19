@@ -225,22 +225,30 @@ coroutine.wrap(function()
 end)()
 
 local function onDescendantAdded(descendant)
-    task.wait(_G.FPSBoostSettings.OtherSettings.LoadedWait or 1)
-    CheckIfBad(descendant)
-end
-
-game.DescendantAdded:Connect(onDescendantAdded)
-local descendants = game:GetDescendants()
-local startNumber = _G.FPSBoostSettings.OtherSettings.WaitPerAmount or 500
-local waitNumber = startNumber
-
-for i, descendant in pairs(descendants) do
-    CheckIfBad(descendant)
-    if i == waitNumber then
-        task.wait()
-        waitNumber = waitNumber + startNumber
+    if _G.FPSBoostSettings and _G.AdvancedFPSBoostSettings then  -- Check if settings tables are loaded
+        task.wait(_G.FPSBoostSettings.OtherSettings.LoadedWait or 1)
+        CheckIfBad(descendant)
     end
 end
 
-print("FPS Booster Loaded!")
-print("FPS Booster script fully initialized and running.")
+local function startFPSBoost()
+    game.DescendantAdded:Connect(onDescendantAdded)
+    local descendants = game:GetDescendants()
+    local startNumber = _G.FPSBoostSettings.OtherSettings.WaitPerAmount or 500
+    local waitNumber = startNumber
+
+    for i, descendant in pairs(descendants) do
+        CheckIfBad(descendant)
+        if i == waitNumber then
+            task.wait()
+            waitNumber = waitNumber + startNumber
+        end
+    end
+
+    print("FPS Booster Loaded!")
+    print("FPS Booster script fully initialized and running.")
+end
+
+return {
+    startFPSBoost = startFPSBoost
+}
