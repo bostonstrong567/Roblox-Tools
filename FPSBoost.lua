@@ -397,8 +397,12 @@ function FPSBoost:applyLowQualityParts()
 end
 
 function FPSBoost:updateSettings(settingKey, value)
-    self.FPSBoostSettings[settingKey] = value
-    self:initialize()
+    if self.FPSBoostSettings[settingKey] ~= nil then
+        self.FPSBoostSettings[settingKey] = value
+        self:initialize()
+    else
+        warn("Invalid settingKey:", settingKey)
+    end
 end
 
 function FPSBoost:initialize()
