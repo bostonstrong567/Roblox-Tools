@@ -4,11 +4,14 @@ if not game:IsLoaded() then
     until game:IsLoaded()
 end
 
-local FPSBoost = {}
 local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 local workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
+local StarterGui = game:GetService("StarterGui")
+local MaterialService = game:GetService("MaterialService")
+
+local FPSBoost = {}
 
 FPSBoost.FPSBoostSettings = {
     ["No Particles"] = false,
@@ -62,18 +65,54 @@ FPSBoost.AdvancedFPSBoostSettings = {
 FPSBoost.OriginalSettings = {}
 FPSBoost.originalInstanceSettings = {}
 
-local playerCharacters = {}
-for _, player in pairs(Players:GetPlayers()) do
-    playerCharacters[player] = player.Character
-end
+function FPSBoost:PartOfCharacter(instance)
+    local playerCharacter = player.Character
+    if playerCharacter and instance:IsDescendantOf(playerCharacter) then
+        return true
+    end
 
-local function PartOfCharacter(Instance)
-    for player, character in pairs(playerCharacters) do
-        if player ~= player and character and Instance:IsDescendantOf(character) then
-            return true
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= player then
+            local character = p.Character
+            if character and instance:IsDescendantOf(character) then
+                return true
+            end
         end
     end
+
     return false
+end
+
+function FPSBoost:applySettings(settingKey, className, applySetting, revertSetting, nonWorkspace)
+    if not self.OriginalSettings[settingKey] then
+        self.OriginalSettings[settingKey] = {}
+    end
+
+    workspace.DescendantAdded:Connect(function(item)
+        if item and item:IsA(className) then
+            if self.FPSBoostSettings[settingKey] then
+                local originalSettings = applySetting(item)
+                if originalSettings then
+                    table.insert(self.OriginalSettings[settingKey], {item = item, settings = originalSettings})
+                end
+            else
+                for _, data in pairs(self.OriginalSettings[settingKey]) do
+                    if data and data.item and data.settings then
+                        revertSetting(data)
+                    end
+                end
+                self.OriginalSettings[settingKey] = {}
+            end
+        end
+    end)
+end
+
+function FPSBoost:modifyAttribute(instance, attribute, value)
+    if not self.originalInstanceSettings[instance] then
+        self.originalInstanceSettings[instance] = {}
+    end
+    self.originalInstanceSettings[instance][attribute] = instance[attribute]
+    instance[attribute] = value
 end
 
 local settingsMapping = {
@@ -151,10 +190,25 @@ local settingsMapping = {
     }
 }
 
-local function CheckIfBad(instance)
+function FPSBoost:initialize()
+    self:applyLowWaterGraphics()
+    self:applyNoShadows()
+    self:applyLowRendering()
+    self:applyNoParticles()
+    self:applyNoCameraEffects()
+    self:applyNoExplosions()
+    self:applyNoClothes()
+    self:applyLowQualityParts()
+
+    workspace.DescendantAdded:Connect(function(instance)
+        self:CheckIfBad(instance)
+    end)
+end
+
+function FPSBoost:CheckIfBad(instance)
     if not instance:IsDescendantOf(Players) then
-        local playerCharacter = PartOfCharacter(instance)
-        local playerSettings = FPSBoost.AdvancedFPSBoostSettings.PlayerSettings
+        local playerCharacter = self:PartOfCharacter(instance)
+        local playerSettings = self.AdvancedFPSBoostSettings.PlayerSettings
         if (playerSettings["Ignore Me"] and player.Character and instance:IsDescendantOf(player.Character)) or 
            (playerSettings["Ignore Others"] and playerCharacter) or 
            (playerSettings["Ignore Tools"] and (instance:IsA("BackpackItem") or instance:FindFirstAncestorWhichIsA("BackpackItem"))) then
@@ -164,8 +218,8 @@ local function CheckIfBad(instance)
         local settingsToCheck = settingsMapping[instance.ClassName] or {}
         for _, settingInfo in ipairs(settingsToCheck) do
             if settingInfo.setting[settingInfo.condition] then
-                if not FPSBoost.originalInstanceSettings[instance] then
-                    FPSBoost.originalInstanceSettings[instance] = {}
+                if not self.originalInstanceSettings[instance] then
+                    self.originalInstanceSettings[instance] = {}
                 end
                 if settingInfo.method == "Destroy" then
                     if instance:IsA("Part") or instance:IsA("MeshPart") then
@@ -177,33 +231,32 @@ local function CheckIfBad(instance)
                     end
                     instance:Destroy()
                 else
-                    FPSBoost.originalInstanceSettings[instance][settingInfo.attribute] = instance[settingInfo.attribute]
+                    self.originalInstanceSettings[instance][settingInfo.attribute] = instance[settingInfo.attribute]
                     instance[settingInfo.attribute] = settingInfo.changeTo
                 end
             end
         end
-        if instance:IsA("BasePart") and FPSBoost.FPSBoostSettings["Low Quality Parts"] then
-            instance.Material = Enum.Material.Plastic
-            instance.Reflectance = 0
-        end
-        if instance:IsA("MeshPart") then
-            if FPSBoost.AdvancedFPSBoostSettings.MeshPartSettings.LowerQuality then
-                instance.Reflectance = 0
-                instance.Material = Enum.Material.Plastic
-            end
-            if FPSBoost.AdvancedFPSBoostSettings.MeshPartSettings.Invisible then
-                instance.Transparency = 1
-                instance.Reflectance = 0
-                instance.Material = Enum.Material.Plastic
-            end
-        end
+        self:applyInstanceSettings(instance)
     end
 end
 
-local Lighting = game:GetService("Lighting")
-local StarterGui = game:GetService("StarterGui")
-local MaterialService = game:GetService("MaterialService")
-local workspace = game:GetService("Workspace")
+function FPSBoost:applyInstanceSettings(instance)
+    if instance:IsA("BasePart") and self.FPSBoostSettings["Low Quality Parts"] then
+        instance.Material = Enum.Material.Plastic
+        instance.Reflectance = 0
+    end
+    if instance:IsA("MeshPart") then
+        if self.AdvancedFPSBoostSettings.MeshPartSettings.LowerQuality then
+            instance.Reflectance = 0
+            instance.Material = Enum.Material.Plastic
+        end
+        if self.AdvancedFPSBoostSettings.MeshPartSettings.Invisible then
+            instance.Transparency = 1
+            instance.Reflectance = 0
+            instance.Material = Enum.Material.Plastic
+        end
+    end
+end
 
 function FPSBoost:applyNoParticles()
     self:applySettings(
@@ -429,48 +482,6 @@ function FPSBoost:updateSettings(key, value)
     elseif key == "Low Quality Parts" then
         self:applyLowQualityParts()
     end
-end
-
-FPSBoost.applySettings = function(self, settingKey, className, applySetting, revertSetting)
-    if not self.OriginalSettings[settingKey] then
-        self.OriginalSettings[settingKey] = {}
-    end
-
-    workspace.DescendantAdded:Connect(function(item)
-        if item and item:IsA(className) then
-            if self.FPSBoostSettings[settingKey] then
-                local originalSettings = applySetting(item)
-                if originalSettings then
-                    table.insert(self.OriginalSettings[settingKey], {item = item, settings = originalSettings})
-                end
-            else
-                for _, data in pairs(self.OriginalSettings[settingKey]) do
-                    if data and data.item and data.settings then
-                        revertSetting(data)
-                        if data.item then
-                            data.item:Destroy() -- Ensure that the item is destroyed
-                        end
-                    end
-                end
-                self.OriginalSettings[settingKey] = {}
-            end
-        end
-    end)
-end
-
-function FPSBoost:initialize()
-    self:applyLowWaterGraphics()
-    self:applyNoShadows()
-    self:applyLowRendering()
-    self:applyNoParticles()
-    self:applyNoCameraEffects()
-    self:applyNoExplosions()
-    self:applyNoClothes()
-    self:applyLowQualityParts()
-
-    workspace.DescendantAdded:Connect(function(instance)
-        CheckIfBad(instance)
-    end)
 end
 
 FPSBoost:initialize()
