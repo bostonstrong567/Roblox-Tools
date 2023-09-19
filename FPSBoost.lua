@@ -161,36 +161,54 @@ local function DescendantOfIgnore(Instance)
 end
 
 local function CheckIfBad(Instance)
-    if Instance:IsDescendantOf(Players) then return end
-
-    local ignoreCondition = (FPSBoost.AdvancedFPSBoostSettings.PlayerSettings["Ignore Me"] and ME.Character and Instance:IsDescendantOf(ME.Character)) or 
-                            (FPSBoost.AdvancedFPSBoostSettings.PlayerSettings["Ignore Others"] and PartOfCharacter(Instance)) or 
-                            (FPSBoost.AdvancedFPSBoostSettings.PlayerSettings["Ignore Tools"] and (Instance:IsA("BackpackItem") or Instance:FindFirstAncestorWhichIsA("BackpackItem")))
-
-    if ignoreCondition then return end
-
-    for className, settings in pairs(settingsMapping) do
-        if Instance:IsA(className) then
-            for _, settingInfo in ipairs(settings) do
-                if settingInfo.setting[settingInfo.condition] then
-                    local instanceSettings = FPSBoost.originalInstanceSettings[tostring(Instance)] or {}
-                    FPSBoost.originalInstanceSettings[tostring(Instance)] = instanceSettings
-                    
-                    if settingInfo.method == "Destroy" then
-                        Instance:Destroy()
-                    else
-                        instanceSettings[settingInfo.attribute] = Instance[settingInfo.attribute]
-                        Instance[settingInfo.attribute] = settingInfo.changeTo
+    if not Instance:IsDescendantOf(Players) then
+        if FPSBoost.AdvancedFPSBoostSettings.PlayerSettings["Ignore Me"] and ME.Character and Instance:IsDescendantOf(ME.Character) then
+            return
+        end
+        if FPSBoost.AdvancedFPSBoostSettings.PlayerSettings["Ignore Others"] and PartOfCharacter(Instance) then
+            return
+        end
+        if FPSBoost.AdvancedFPSBoostSettings.PlayerSettings["Ignore Tools"] and (Instance:IsA("BackpackItem") or Instance:FindFirstAncestorWhichIsA("BackpackItem")) then
+            return
+        end
+        
+        for className, settings in pairs(settingsMapping) do
+            if Instance:IsA(className) then
+                for _, settingInfo in ipairs(settings) do
+                    if settingInfo.setting[settingInfo.condition] then
+                        if not FPSBoost.originalInstanceSettings[tostring(Instance)] then
+                            FPSBoost.originalInstanceSettings[tostring(Instance)] = {}
+                        end
+                        if settingInfo.method == "Destroy" then
+                            Instance:Destroy()
+                        else
+                            FPSBoost.originalInstanceSettings[tostring(Instance)][settingInfo.attribute] = Instance[settingInfo.attribute]
+                            Instance[settingInfo.attribute] = settingInfo.changeTo
+                        end
                     end
                 end
+                break
             end
-            break
         end
-    end
 
-    if Instance:IsA("BasePart") and FPSBoost.FPSBoostSettings["Low Quality Parts"] then
-        Instance.Material = Enum.Material.Plastic
-        Instance.Reflectance = 0
+        if Instance:IsA("BasePart") and FPSBoost.FPSBoostSettings["Low Quality Parts"] then
+            Instance.Material = Enum.Material.Plastic
+            Instance.Reflectance = 0
+        end
+
+        if Instance:IsA("MeshPart") then
+            if FPSBoost.AdvancedFPSBoostSettings.MeshPartSettings.LowerQuality then
+                Instance.RenderFidelity = Enum.RenderFidelity.Performance
+                Instance.Reflectance = 0
+                Instance.Material = Enum.Material.Plastic
+            end
+            if FPSBoost.AdvancedFPSBoostSettings.MeshPartSettings.Invisible then
+                Instance.Transparency = 1
+                Instance.RenderFidelity = Enum.RenderFidelity.Performance
+                Instance.Reflectance = 0
+                Instance.Material = Enum.Material.Plastic
+            end
+        end
     end
 end
 
