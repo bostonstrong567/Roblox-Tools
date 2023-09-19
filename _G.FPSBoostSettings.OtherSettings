@@ -6,7 +6,8 @@ end
 
 local Players = game:GetService("Players")
 local ME = Players.LocalPlayer
-_G.FPSBoostSettings ={
+
+_G.FPSBoostSettings = {
     OtherSettings = {
         ["No Particles"] = false,
         ["No Camera Effects"] = false,
@@ -19,7 +20,7 @@ _G.FPSBoostSettings ={
     }
 }
 
-_G.AdvancedFPSBoostSettings ={
+_G.AdvancedFPSBoostSettings = {
     PlayerSettings = {
         ["Ignore Me"] = true,
         ["Ignore Others"] = true,
@@ -161,6 +162,7 @@ local function CheckIfBad(Instance)
 end
 
 local Lighting = game:GetService("Lighting")
+local StarterGui = game:GetService("StarterGui")
 local MaterialService = game:GetService("MaterialService")
 local workspace = game:GetService("Workspace")
 
@@ -229,7 +231,7 @@ end
 game.DescendantAdded:Connect(onDescendantAdded)
 local descendants = game:GetDescendants()
 local startNumber = _G.FPSBoostSettings.OtherSettings.WaitPerAmount or 500
-local waitNumber = _G.FPSBoostSettings.OtherSettings.WaitPerAmount or 500
+local waitNumber = startNumber
 
 for i, descendant in pairs(descendants) do
     CheckIfBad(descendant)
