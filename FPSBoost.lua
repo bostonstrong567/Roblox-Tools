@@ -14,18 +14,18 @@ local function storeOriginalValues()
     local originalValues = {}
     for i, v in pairs(game.Workspace:GetDescendants()) do
         if v:IsA("BasePart") then
-            originalValues[v] = {Material = v.Material, Transparency = v.Transparency}
+            originalValues[v] = { Material = v.Material, Transparency = v.Transparency }
         elseif v:IsA("Decal") or v:IsA("Texture") then
-            originalValues[v] = {Transparency = v.Transparency}
+            originalValues[v] = { Transparency = v.Transparency }
         elseif v:IsA("Light") then
-            originalValues[v] = {IsEnabled = v.Enabled}
+            originalValues[v] = { IsEnabled = v.Enabled }
         elseif v:IsA("ParticleEmitter") or v:IsA("Trail") then
-            originalValues[v] = {IsEnabled = v.Enabled}
+            originalValues[v] = { IsEnabled = v.Enabled }
         end
     end
     for i, e in ipairs(game.Lighting:GetChildren()) do
         if e:IsA("BlurEffect") or e:IsA("SunRaysEffect") or e:IsA("ColorCorrectionEffect") or e:IsA("BloomEffect") or e:IsA("DepthOfFieldEffect") then
-            originalValues[e] = {IsEnabled = e.Enabled}
+            originalValues[e] = { IsEnabled = e.Enabled }
         end
     end
     return originalValues
