@@ -36,7 +36,7 @@ FPSBoost.originalValues = storeOriginalValues()
 function FPSBoost:applySettings()
     self:toggleLowQualityParts()
     self:toggleDecalsAndTextures()
-    self:FPSBoost:toggleParticles()
+    self:toggleParticles()
     self:toggleLights()
     self:toggleEffects()
 end
