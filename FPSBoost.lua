@@ -4,24 +4,21 @@ if not game:IsLoaded() then
     until game:IsLoaded()
 end
 
-local Players = game:GetService("Players")
-local ME = Players.LocalPlayer
+local FPSBoost = {}
 
-_G.FPSBoostSettings = {
-    OtherSettings = {
-        ["FPS Cap"] = 240, -- Set this true to uncap FPS
-        ["No Particles"] = false,
-        ["No Camera Effects"] = false,
-        ["No Explosions"] = false,
-        ["No Clothes"] = false,
-        ["Low Water Graphics"] = false,
-        ["No Shadows"] = false,
-        ["Low Rendering"] = false,
-        ["Low Quality Parts"] = false
-    }
+FPSBoost.FPSBoostSettings = {
+    ["FPS Cap"] = true, -- Set this true to uncap FPS,
+    ["No Particles"] = false,
+    ["No Camera Effects"] = false,
+    ["No Explosions"] = false,
+    ["No Clothes"] = false,
+    ["Low Water Graphics"] = false,
+    ["No Shadows"] = false,
+    ["Low Rendering"] = false,
+    ["Low Quality Parts"] = false
 }
 
-_G.AdvancedFPSBoostSettings = {
+FPSBoost.AdvancedFPSBoostSettings = {
     PlayerSettings = {
         ["Ignore Me"] = true,
         ["Ignore Others"] = true,
@@ -59,6 +56,9 @@ _G.AdvancedFPSBoostSettings = {
     },
 }
 
+local Players = game:GetService("Players")
+local ME = Players.LocalPlayer
+
 local function PartOfCharacter(Instance)
     for _, v in pairs(Players:GetPlayers()) do
         if v ~= ME and v.Character and Instance:IsDescendantOf(v.Character) then
@@ -79,83 +79,83 @@ end
 
 local function CheckIfBad(Instance)
     if not Instance:IsDescendantOf(Players) then
-        if _G.AdvancedFPSBoostSettings.PlayerSettings["Ignore Me"] and ME.Character and Instance:IsDescendantOf(ME.Character) then
+        if FPSBoost.AdvancedFPSBoostSettings.PlayerSettings["Ignore Me"] and ME.Character and Instance:IsDescendantOf(ME.Character) then
             return
         end
-        if _G.AdvancedFPSBoostSettings.PlayerSettings["Ignore Others"] and PartOfCharacter(Instance) then
+        if FPSBoost.AdvancedFPSBoostSettings.PlayerSettings["Ignore Others"] and PartOfCharacter(Instance) then
             return
         end
-        if _G.AdvancedFPSBoostSettings.PlayerSettings["Ignore Tools"] and (Instance:IsA("BackpackItem") or Instance:FindFirstAncestorWhichIsA("BackpackItem")) then
+        if FPSBoost.AdvancedFPSBoostSettings.PlayerSettings["Ignore Tools"] and (Instance:IsA("BackpackItem") or Instance:FindFirstAncestorWhichIsA("BackpackItem")) then
             return
         end
 
         if Instance:IsA("DataModelMesh") then
-            if _G.AdvancedFPSBoostSettings.MeshSettings.NoMesh and Instance:IsA("SpecialMesh") then
+            if FPSBoost.AdvancedFPSBoostSettings.MeshSettings.NoMesh and Instance:IsA("SpecialMesh") then
                 Instance.MeshId = ""
             end
-            if _G.AdvancedFPSBoostSettings.MeshSettings.NoTexture and Instance:IsA("SpecialMesh") then
+            if FPSBoost.AdvancedFPSBoostSettings.MeshSettings.NoTexture and Instance:IsA("SpecialMesh") then
                 Instance.TextureId = ""
             end
-            if _G.AdvancedFPSBoostSettings.MeshSettings.Destroy then
+            if FPSBoost.AdvancedFPSBoostSettings.MeshSettings.Destroy then
                 Instance:Destroy()
             end
         elseif Instance:IsA("ImageLabel") or Instance:IsA("ImageButton") then
-            if _G.AdvancedFPSBoostSettings.ImageSettings.Invisible then
+            if FPSBoost.AdvancedFPSBoostSettings.ImageSettings.Invisible then
                 Instance.ImageTransparency = 1
             end
-            if _G.AdvancedFPSBoostSettings.ImageSettings.Destroy then
+            if FPSBoost.AdvancedFPSBoostSettings.ImageSettings.Destroy then
                 Instance:Destroy()
             end
         elseif Instance:IsA("Explosion") then
-            if _G.AdvancedFPSBoostSettings.ExplosionSettings.Smaller then
+            if FPSBoost.AdvancedFPSBoostSettings.ExplosionSettings.Smaller then
                 Instance.BlastPressure = 1
                 Instance.BlastRadius = 1
             end
-            if _G.AdvancedFPSBoostSettings.ExplosionSettings.Invisible then
+            if FPSBoost.AdvancedFPSBoostSettings.ExplosionSettings.Invisible then
                 Instance.Visible = false
             end
-            if _G.AdvancedFPSBoostSettings.ExplosionSettings.Destroy then
+            if FPSBoost.AdvancedFPSBoostSettings.ExplosionSettings.Destroy then
                 Instance:Destroy()
             end
         elseif Instance:IsA("ParticleEmitter") or Instance:IsA("Trail") or Instance:IsA("Smoke") or Instance:IsA("Fire") or Instance:IsA("Sparkles") then
-            if _G.AdvancedFPSBoostSettings.ParticleSettings.Invisible then
+            if FPSBoost.AdvancedFPSBoostSettings.ParticleSettings.Invisible then
                 Instance.Enabled = false
             end
-            if _G.AdvancedFPSBoostSettings.ParticleSettings.Destroy then
+            if FPSBoost.AdvancedFPSBoostSettings.ParticleSettings.Destroy then
                 Instance:Destroy()
             end
         elseif Instance:IsA("TextLabel") then
-            if _G.AdvancedFPSBoostSettings.TextLabelSettings.LowerQuality then
+            if FPSBoost.AdvancedFPSBoostSettings.TextLabelSettings.LowerQuality then
                 Instance.Font = Enum.Font.SourceSans
                 Instance.TextScaled = false
                 Instance.RichText = false
                 Instance.TextSize = 14
             end
-            if _G.AdvancedFPSBoostSettings.TextLabelSettings.Invisible then
+            if FPSBoost.AdvancedFPSBoostSettings.TextLabelSettings.Invisible then
                 Instance.Visible = false
             end
-            if _G.AdvancedFPSBoostSettings.TextLabelSettings.Destroy then
+            if FPSBoost.AdvancedFPSBoostSettings.TextLabelSettings.Destroy then
                 Instance:Destroy()
             end
         elseif Instance:IsA("MeshPart") then
-            if _G.AdvancedFPSBoostSettings.MeshPartSettings.LowerQuality then
+            if FPSBoost.AdvancedFPSBoostSettings.MeshPartSettings.LowerQuality then
                 Instance.RenderFidelity = Enum.RenderFidelity.Performance
                 Instance.Material = Enum.Material.Plastic
                 Instance.Reflectance = 0
             end
-            if _G.AdvancedFPSBoostSettings.MeshPartSettings.Invisible then
+            if FPSBoost.AdvancedFPSBoostSettings.MeshPartSettings.Invisible then
                 Instance.Transparency = 1
             end
-            if _G.AdvancedFPSBoostSettings.MeshPartSettings.NoTexture then
+            if FPSBoost.AdvancedFPSBoostSettings.MeshPartSettings.NoTexture then
                 Instance.TextureID = ""
             end
-            if _G.AdvancedFPSBoostSettings.MeshPartSettings.NoMesh then
+            if FPSBoost.AdvancedFPSBoostSettings.MeshPartSettings.NoMesh then
                 Instance.MeshId = ""
             end
-            if _G.AdvancedFPSBoostSettings.MeshPartSettings.Destroy then
+            if FPSBoost.AdvancedFPSBoostSettings.MeshPartSettings.Destroy then
                 Instance:Destroy()
             end
-        elseif Instance:IsA("BasePart") and _G.FPSBoostSettings.OtherSettings["Low Quality Parts"] then
+        elseif Instance:IsA("BasePart") and FPSBoost.FPSBoostSettings["Low Quality Parts"] then
             Instance.Material = Enum.Material.Plastic
             Instance.Reflectance = 0
         end
@@ -168,7 +168,7 @@ local MaterialService = game:GetService("MaterialService")
 local workspace = game:GetService("Workspace")
 
 coroutine.wrap(function()
-    if _G.FPSBoostSettings.OtherSettings["Low Water Graphics"] then
+    if FPSBoost.FPSBoostSettings["Low Water Graphics"] then
         if not workspace:FindFirstChildOfClass("Terrain") then
             repeat
                 task.wait()
@@ -188,7 +188,7 @@ coroutine.wrap(function()
 end)()
 
 coroutine.wrap(function()
-    if _G.FPSBoostSettings.OtherSettings["No Shadows"] then
+    if FPSBoost.FPSBoostSettings["No Shadows"] then
         Lighting.GlobalShadows = false
         Lighting.FogEnd = 9e9
         Lighting.ShadowSoftness = 0
@@ -201,14 +201,14 @@ coroutine.wrap(function()
 end)()
 
 coroutine.wrap(function()
-    if _G.FPSBoostSettings.OtherSettings["Low Rendering"] then
+    if FPSBoost.FPSBoostSettings["Low Rendering"] then
         settings().Rendering.QualityLevel = 1
         settings().Rendering.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level04
     end
 end)()
 
 coroutine.wrap(function()
-    local fpsCap = _G.FPSBoostSettings.OtherSettings["FPS Cap"]
+    local fpsCap = FPSBoost.FPSBoostSettings["FPS Cap"]
     if fpsCap then
         if setfpscap then
             if type(fpsCap) == "string" or type(fpsCap) == "number" then
@@ -224,20 +224,18 @@ coroutine.wrap(function()
     end
 end)()
 
-local function onDescendantAdded(descendant)
-    if _G.FPSBoostSettings and _G.AdvancedFPSBoostSettings then  -- Check if settings tables are loaded
-        task.wait(_G.FPSBoostSettings.OtherSettings.LoadedWait or 1)
+function FPSBoost:startFPSBoost()
+    local function onDescendantAdded(descendant)
+        task.wait(1)
         CheckIfBad(descendant)
     end
-end
 
-local function startFPSBoost()
     game.DescendantAdded:Connect(onDescendantAdded)
-    local descendants = game:GetDescendants()
-    local startNumber = _G.FPSBoostSettings.OtherSettings.WaitPerAmount or 500
+    
+    local startNumber = 500
     local waitNumber = startNumber
 
-    for i, descendant in pairs(descendants) do
+    for i, descendant in pairs(game:GetDescendants()) do
         CheckIfBad(descendant)
         if i == waitNumber then
             task.wait()
@@ -248,7 +246,3 @@ local function startFPSBoost()
     print("FPS Booster Loaded!")
     print("FPS Booster script fully initialized and running.")
 end
-
-return {
-    startFPSBoost = startFPSBoost
-}
