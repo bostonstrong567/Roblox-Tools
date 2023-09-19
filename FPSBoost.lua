@@ -13,8 +13,12 @@ local connections = {}
 local function storeOriginalValues()
     local originalValues = {}
     for i, v in pairs(game.Workspace:GetDescendants()) do
-        if v:IsA("BasePart") or v:IsA("Decal") or v:IsA("Texture") or v:IsA("ParticleEmitter") or v:IsA("Light") then
-            originalValues[v] = {Material = v.Material, Transparency = v.Transparency, IsEnabled = v:IsA("Light") and v.Enabled or nil}
+        if v:IsA("BasePart") then
+            originalValues[v] = {Material = v.Material, Transparency = v.Transparency}
+        elseif v:IsA("Decal") or v:IsA("Texture") then
+            originalValues[v] = {Transparency = v.Transparency}
+        elseif v:IsA("Light") then
+            originalValues[v] = {IsEnabled = v.Enabled}
         end
     end
     for i, e in ipairs(game.Lighting:GetChildren()) do
