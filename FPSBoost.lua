@@ -57,7 +57,7 @@ FPSBoost.AdvancedFPSBoostSettings = {
 }
 
 for _,connection in next, FPSBoost.FPSBoostSettings do
-    connection[1].Changed:Connect(function(value)
+    _.Changed:Connect(function(value)
         print(value)
     end)
 end
