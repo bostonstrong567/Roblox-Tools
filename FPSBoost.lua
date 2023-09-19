@@ -34,15 +34,13 @@ end
 FPSBoost.originalValues = storeOriginalValues()
 
 function FPSBoost:toggleLowQualityParts()
-    print("Toggling Low Quality Parts")  -- Added print statement
+    print("Toggling Low Quality Parts")  -- Add this line
     for descendant, originalValues in pairs(self.originalValues) do
         if descendant:IsA("BasePart") and not descendant:IsA("Texture") then
             if self.settings.LowQualityParts then
-                print("Setting low quality settings for", descendant:GetFullName())  -- Added print statement
                 descendant.Material = Enum.Material.SmoothPlastic
                 descendant.Transparency = 1
             else
-                print("Restoring original settings for", descendant:GetFullName())  -- Added print statement
                 descendant.Material = originalValues.Material
                 descendant.Transparency = originalValues.Transparency
             end
@@ -51,6 +49,7 @@ function FPSBoost:toggleLowQualityParts()
 end
 
 function FPSBoost:toggleDecalsAndTextures()
+    print("Toggling Decals and Textures") 
     for descendant, originalValues in pairs(self.originalValues) do
         if descendant:IsA("Decal") or descendant:IsA("Texture") then
             if self.settings.RemoveDecalsAndTextures then
@@ -63,6 +62,7 @@ function FPSBoost:toggleDecalsAndTextures()
 end
 
 function FPSBoost:toggleParticles()
+    print("Toggling Particles") 
     for descendant, originalValues in pairs(self.originalValues) do
         if descendant:IsA("ParticleEmitter") or descendant:IsA("Trail") then
             if self.settings.DisableParticles then
@@ -75,6 +75,7 @@ function FPSBoost:toggleParticles()
 end
 
 function FPSBoost:toggleLights()
+    print("Toggling Lights") 
     for descendant, originalValues in pairs(self.originalValues) do
         if descendant:IsA("Light") then
             if self.settings.DisableLights then
@@ -87,6 +88,7 @@ function FPSBoost:toggleLights()
 end
 
 function FPSBoost:toggleEffects()
+    print("Toggling Effects")
     for _, e in pairs(game.Lighting:GetChildren()) do
         if e:IsA("BlurEffect") or e:IsA("SunRaysEffect") or e:IsA("ColorCorrectionEffect") or e:IsA("BloomEffect") or e:IsA("DepthOfFieldEffect") then
             if self.settings.DisableEffects then
