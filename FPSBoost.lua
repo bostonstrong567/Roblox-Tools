@@ -277,7 +277,7 @@ function FPSBoost:applyFPSCap()
 end
 
 function FPSBoost:initialize()
-    self:setupOriginalSettings()
+    FPSBoost:setupOriginalSettings()
     self:applyLowWaterGraphics()
     self:applyNoShadows()
     self:applyLowRendering()
