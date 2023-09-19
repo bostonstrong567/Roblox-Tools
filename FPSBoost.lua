@@ -34,11 +34,11 @@ end
 FPSBoost.originalValues = storeOriginalValues()
 
 function FPSBoost:applySettings()
-    self:applyLowQualityParts()
-    self:applyRemoveDecalsAndTextures()
-    self:applyDisableParticles()
-    self:applyDisableLights()
-    self:applyDisableEffects()
+    self:toggleLowQualityParts()
+    self:toggleRemoveDecalsAndTextures()
+    self:toggleDisableParticles()
+    self:toggleDisableLights()
+    self:toggleDisableEffects()
 end
 
 function FPSBoost:toggleLowQualityParts()
