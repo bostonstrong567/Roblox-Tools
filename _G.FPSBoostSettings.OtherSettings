@@ -57,7 +57,6 @@ _G.AdvancedFPSBoostSettings ={
     },
 }
 
-
 local function PartOfCharacter(Instance)
     for _, v in pairs(Players:GetPlayers()) do
         if v ~= ME and v.Character and Instance:IsDescendantOf(v.Character) then
@@ -154,7 +153,7 @@ local function CheckIfBad(Instance)
             if _G.AdvancedFPSBoostSettings.MeshPartSettings.Destroy then
                 Instance:Destroy()
             end
-        elseif Instance:IsA("BasePart") and FPSBoostSettings.OtherSettings["Low Quality Parts"] then
+        elseif Instance:IsA("BasePart") and _G.FPSBoostSettings.OtherSettings["Low Quality Parts"] then
             Instance.Material = Enum.Material.Plastic
             Instance.Reflectance = 0
         end
@@ -162,12 +161,11 @@ local function CheckIfBad(Instance)
 end
 
 local Lighting = game:GetService("Lighting")
-local StarterGui = game:GetService("StarterGui")
 local MaterialService = game:GetService("MaterialService")
 local workspace = game:GetService("Workspace")
 
 coroutine.wrap(function()
-    if FPSBoostSettings.OtherSettings["Low Water Graphics"] then
+    if _G.FPSBoostSettings.OtherSettings["Low Water Graphics"] then
         if not workspace:FindFirstChildOfClass("Terrain") then
             repeat
                 task.wait()
@@ -187,7 +185,7 @@ coroutine.wrap(function()
 end)()
 
 coroutine.wrap(function()
-    if FPSBoostSettings.OtherSettings["No Shadows"] then
+    if _G.FPSBoostSettings.OtherSettings["No Shadows"] then
         Lighting.GlobalShadows = false
         Lighting.FogEnd = 9e9
         Lighting.ShadowSoftness = 0
@@ -200,14 +198,14 @@ coroutine.wrap(function()
 end)()
 
 coroutine.wrap(function()
-    if FPSBoostSettings.OtherSettings["Low Rendering"] then
+    if _G.FPSBoostSettings.OtherSettings["Low Rendering"] then
         settings().Rendering.QualityLevel = 1
         settings().Rendering.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level04
     end
 end)()
 
 coroutine.wrap(function()
-    local fpsCap = FPSBoostSettings.OtherSettings["FPS Cap"]
+    local fpsCap = _G.FPSBoostSettings.OtherSettings["FPS Cap"]
     if fpsCap then
         if setfpscap then
             if type(fpsCap) == "string" or type(fpsCap) == "number" then
@@ -231,7 +229,7 @@ end
 game.DescendantAdded:Connect(onDescendantAdded)
 local descendants = game:GetDescendants()
 local startNumber = _G.FPSBoostSettings.OtherSettings.WaitPerAmount or 500
-local waitNumber = startNumber
+local waitNumber = _G.FPSBoostSettings.OtherSettings.WaitPerAmount or 500
 
 for i, descendant in pairs(descendants) do
     CheckIfBad(descendant)
