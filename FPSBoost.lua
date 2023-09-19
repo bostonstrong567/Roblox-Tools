@@ -56,9 +56,11 @@ FPSBoost.AdvancedFPSBoostSettings = {
     },
 }
 
-FPSBoost.FPSBoostSettings:Connect(function(connection)
-    print(connection)
-end)
+for _,connection in next, FPSBoost.FPSBoostSettings do
+    connection:Connect(function(value)
+        print(value)
+    end)
+end
 
 local Players = game:GetService("Players")
 local ME = Players.LocalPlayer
