@@ -13,7 +13,7 @@ local connections = {}
 local function storeOriginalValues()
     local originalValues = {}
     for i, v in pairs(game.Workspace:GetDescendants()) do
-        if v:IsA("BasePart") then
+        if v:IsA("Part") or v:IsA("MeshPart") or v:IsA("UnionOperation") or v:IsA("WedgePart") or v:IsA("CornerWedgePart") or v:IsA("TrussPart") or v:IsA("VehicleSeat") or v:IsA("Seat") then
             originalValues[v] = { Material = v.Material, Transparency = v.Transparency }
         elseif v:IsA("Decal") or v:IsA("Texture") then
             originalValues[v] = { Transparency = v.Transparency }
