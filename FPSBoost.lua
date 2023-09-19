@@ -13,7 +13,7 @@ local connections = {}
 local function storeOriginalValues()
     local originalValues = {}
     for _, v in pairs(workspace:GetDescendants()) do
-        if v:IsA("BasePart") then
+        if v:IsA("BasePart") and not v:IsA("Texture") then
             originalValues[v] = { Material = v.Material, Transparency = v.Transparency }
         elseif v:IsA("Decal") or v:IsA("Texture") then
             originalValues[v] = { Transparency = v.Transparency }
@@ -23,7 +23,7 @@ local function storeOriginalValues()
             originalValues[v] = { Enabled = v.Enabled }
         end
     end
-    for _, e in pairs(game.Lighting:GetChildren()) do
+    for _, e in ipairs(game.Lighting:GetChildren()) do
         if e:IsA("BlurEffect") or e:IsA("SunRaysEffect") or e:IsA("ColorCorrectionEffect") or e:IsA("BloomEffect") or e:IsA("DepthOfFieldEffect") then
             originalValues[e] = { Enabled = e.Enabled }
         end
