@@ -56,14 +56,10 @@ FPSBoost.AdvancedFPSBoostSettings = {
     },
 }
 
-for _,connection in next, FPSBoost.FPSBoostSettings do
-    _.Changed:Connect(function(value)
-        print(value)
-    end)
-end
-
 local Players = game:GetService("Players")
 local ME = Players.LocalPlayer
+
+FPSBoost.originalInstanceSettings = {}
 
 local function PartOfCharacter(Instance)
     for _, v in pairs(Players:GetPlayers()) do
@@ -83,6 +79,63 @@ local function DescendantOfIgnore(Instance)
     return false
 end
 
+local settingsMapping = {
+    DataModelMesh = {
+        {setting = FPSBoost.AdvancedFPSBoostSettings.MeshSettings, attribute = "MeshId", condition = "NoMesh", changeTo = "", method = "ChangeAttribute", originalValue = ""},
+        {setting = FPSBoost.AdvancedFPSBoostSettings.MeshSettings, attribute = "TextureId", condition = "NoTexture", changeTo = "", method = "ChangeAttribute", originalValue = ""},
+        {setting = FPSBoost.AdvancedFPSBoostSettings.MeshSettings, condition = "Destroy", method = "Destroy"},
+    },
+    ImageLabel = {
+        {setting = FPSBoost.AdvancedFPSBoostSettings.ImageSettings, attribute = "ImageTransparency", condition = "Invisible", changeTo = 1, method = "ChangeAttribute", originalValue = 0},
+        {setting = FPSBoost.AdvancedFPSBoostSettings.ImageSettings, condition = "Destroy", method = "Destroy"},
+    },
+    ImageButton = {
+        {setting = FPSBoost.AdvancedFPSBoostSettings.ImageSettings, attribute = "ImageTransparency", condition = "Invisible", changeTo = 1, method = "ChangeAttribute", originalValue = 0},
+        {setting = FPSBoost.AdvancedFPSBoostSettings.ImageSettings, condition = "Destroy", method = "Destroy"},
+    },
+    Explosion = {
+        {setting = FPSBoost.AdvancedFPSBoostSettings.ExplosionSettings, attribute = "BlastPressure", condition = "Smaller", changeTo = 100000, method = "ChangeAttribute", originalValue = 500000},
+        {setting = FPSBoost.AdvancedFPSBoostSettings.ExplosionSettings, attribute = "BlastRadius", condition = "Smaller", changeTo = 10, method = "ChangeAttribute", originalValue = 50},
+        {setting = FPSBoost.AdvancedFPSBoostSettings.ExplosionSettings, attribute = "Visible", condition = "Invisible", changeTo = false, method = "ChangeAttribute", originalValue = true},
+        {setting = FPSBoost.AdvancedFPSBoostSettings.ExplosionSettings, condition = "Destroy", method = "Destroy"},
+    },
+    ParticleEmitter = {
+        {setting = FPSBoost.AdvancedFPSBoostSettings.ParticleSettings, attribute = "Enabled", condition = "Invisible", changeTo = false, method = "ChangeAttribute", originalValue = true},
+        {setting = FPSBoost.AdvancedFPSBoostSettings.ParticleSettings, condition = "Destroy", method = "Destroy"},
+    },
+    Trail = {
+        {setting = FPSBoost.AdvancedFPSBoostSettings.ParticleSettings, attribute = "Enabled", condition = "Invisible", changeTo = false, method = "ChangeAttribute", originalValue = true},
+        {setting = FPSBoost.AdvancedFPSBoostSettings.ParticleSettings, condition = "Destroy", method = "Destroy"},
+    },
+    Smoke = {
+        {setting = FPSBoost.AdvancedFPSBoostSettings.ParticleSettings, attribute = "Enabled", condition = "Invisible", changeTo = false, method = "ChangeAttribute", originalValue = true},
+        {setting = FPSBoost.AdvancedFPSBoostSettings.ParticleSettings, condition = "Destroy", method = "Destroy"},
+    },
+    Fire = {
+        {setting = FPSBoost.AdvancedFPSBoostSettings.ParticleSettings, attribute = "Enabled", condition = "Invisible", changeTo = false, method = "ChangeAttribute", originalValue = true},
+        {setting = FPSBoost.AdvancedFPSBoostSettings.ParticleSettings, condition = "Destroy", method = "Destroy"},
+    },
+    Sparkles = {
+        {setting = FPSBoost.AdvancedFPSBoostSettings.ParticleSettings, attribute = "Enabled", condition = "Invisible", changeTo = false, method = "ChangeAttribute", originalValue = true},
+        {setting = FPSBoost.AdvancedFPSBoostSettings.ParticleSettings, condition = "Destroy", method = "Destroy"},
+    },
+    TextLabel = {
+        {setting = FPSBoost.AdvancedFPSBoostSettings.TextLabelSettings, attribute = "Font", condition = "LowerQuality", changeTo = Enum.Font.SourceSans, method = "ChangeAttribute", originalValue = Enum.Font.SourceSansBold},
+        {setting = FPSBoost.AdvancedFPSBoostSettings.TextLabelSettings, attribute = "TextScaled", condition = "LowerQuality", changeTo = false, method = "ChangeAttribute", originalValue = true},
+        {setting = FPSBoost.AdvancedFPSBoostSettings.TextLabelSettings, attribute = "RichText", condition = "LowerQuality", changeTo = false, method = "ChangeAttribute", originalValue = true},
+        {setting = FPSBoost.AdvancedFPSBoostSettings.TextLabelSettings, attribute = "TextSize", condition = "LowerQuality", changeTo = 12, method = "ChangeAttribute", originalValue = 24},
+        {setting = FPSBoost.AdvancedFPSBoostSettings.TextLabelSettings, attribute = "Visible", condition = "Invisible", changeTo = false, method = "ChangeAttribute", originalValue = true},
+        {setting = FPSBoost.AdvancedFPSBoostSettings.TextLabelSettings, condition = "Destroy", method = "Destroy"},
+    },
+    MeshPart = {
+        {setting = FPSBoost.AdvancedFPSBoostSettings.MeshPartSettings, attribute = "RenderFidelity", condition = "LowerQuality", changeTo = Enum.RenderFidelity.Low, method = "ChangeAttribute", originalValue = Enum.RenderFidelity.High},
+        {setting = FPSBoost.AdvancedFPSBoostSettings.MeshPartSettings, attribute = "Material", condition = "LowerQuality", changeTo = Enum.Material.Plastic, method = "ChangeAttribute", originalValue = Enum.Material.SmoothPlastic},
+        {setting = FPSBoost.AdvancedFPSBoostSettings.MeshPartSettings, attribute = "Reflectance", condition = "LowerQuality", changeTo = 0, method = "ChangeAttribute", originalValue = 0.5},
+        {setting = FPSBoost.AdvancedFPSBoostSettings.MeshPartSettings, attribute = "Transparency", condition = "Invisible", changeTo = 1, method = "ChangeAttribute", originalValue = 0},
+        {setting = FPSBoost.AdvancedFPSBoostSettings.MeshPartSettings, condition = "Destroy", method = "Destroy"},
+    },
+}
+
 local function CheckIfBad(Instance)
     if not Instance:IsDescendantOf(Players) then
         if FPSBoost.AdvancedFPSBoostSettings.PlayerSettings["Ignore Me"] and ME.Character and Instance:IsDescendantOf(ME.Character) then
@@ -94,74 +147,27 @@ local function CheckIfBad(Instance)
         if FPSBoost.AdvancedFPSBoostSettings.PlayerSettings["Ignore Tools"] and (Instance:IsA("BackpackItem") or Instance:FindFirstAncestorWhichIsA("BackpackItem")) then
             return
         end
+        
+        for className, settings in pairs(settingsMapping) do
+            if Instance:IsA(className) then
+                for _, settingInfo in ipairs(settings) do
+                    if settingInfo.setting[settingInfo.condition] then
+                        if not FPSBoost.originalInstanceSettings[tostring(Instance)] then
+                            FPSBoost.originalInstanceSettings[tostring(Instance)] = {}
+                        end
+                        if settingInfo.method == "Destroy" then
+                            Instance:Destroy()
+                        else
+                            FPSBoost.originalInstanceSettings[tostring(Instance)][settingInfo.attribute] = Instance[settingInfo.attribute]
+                            Instance[settingInfo.attribute] = settingInfo.changeTo
+                        end
+                    end
+                end
+                break
+            end
+        end
 
-        if Instance:IsA("DataModelMesh") then
-            if FPSBoost.AdvancedFPSBoostSettings.MeshSettings.NoMesh and Instance:IsA("SpecialMesh") then
-                Instance.MeshId = ""
-            end
-            if FPSBoost.AdvancedFPSBoostSettings.MeshSettings.NoTexture and Instance:IsA("SpecialMesh") then
-                Instance.TextureId = ""
-            end
-            if FPSBoost.AdvancedFPSBoostSettings.MeshSettings.Destroy then
-                Instance:Destroy()
-            end
-        elseif Instance:IsA("ImageLabel") or Instance:IsA("ImageButton") then
-            if FPSBoost.AdvancedFPSBoostSettings.ImageSettings.Invisible then
-                Instance.ImageTransparency = 1
-            end
-            if FPSBoost.AdvancedFPSBoostSettings.ImageSettings.Destroy then
-                Instance:Destroy()
-            end
-        elseif Instance:IsA("Explosion") then
-            if FPSBoost.AdvancedFPSBoostSettings.ExplosionSettings.Smaller then
-                Instance.BlastPressure = 1
-                Instance.BlastRadius = 1
-            end
-            if FPSBoost.AdvancedFPSBoostSettings.ExplosionSettings.Invisible then
-                Instance.Visible = false
-            end
-            if FPSBoost.AdvancedFPSBoostSettings.ExplosionSettings.Destroy then
-                Instance:Destroy()
-            end
-        elseif Instance:IsA("ParticleEmitter") or Instance:IsA("Trail") or Instance:IsA("Smoke") or Instance:IsA("Fire") or Instance:IsA("Sparkles") then
-            if FPSBoost.AdvancedFPSBoostSettings.ParticleSettings.Invisible then
-                Instance.Enabled = false
-            end
-            if FPSBoost.AdvancedFPSBoostSettings.ParticleSettings.Destroy then
-                Instance:Destroy()
-            end
-        elseif Instance:IsA("TextLabel") then
-            if FPSBoost.AdvancedFPSBoostSettings.TextLabelSettings.LowerQuality then
-                Instance.Font = Enum.Font.SourceSans
-                Instance.TextScaled = false
-                Instance.RichText = false
-                Instance.TextSize = 14
-            end
-            if FPSBoost.AdvancedFPSBoostSettings.TextLabelSettings.Invisible then
-                Instance.Visible = false
-            end
-            if FPSBoost.AdvancedFPSBoostSettings.TextLabelSettings.Destroy then
-                Instance:Destroy()
-            end
-        elseif Instance:IsA("MeshPart") then
-            if FPSBoost.AdvancedFPSBoostSettings.MeshPartSettings.LowerQuality then
-                Instance.RenderFidelity = Enum.RenderFidelity.Performance
-                Instance.Material = Enum.Material.Plastic
-                Instance.Reflectance = 0
-            end
-            if FPSBoost.AdvancedFPSBoostSettings.MeshPartSettings.Invisible then
-                Instance.Transparency = 1
-            end
-            if FPSBoost.AdvancedFPSBoostSettings.MeshPartSettings.NoTexture then
-                Instance.TextureID = ""
-            end
-            if FPSBoost.AdvancedFPSBoostSettings.MeshPartSettings.NoMesh then
-                Instance.MeshId = ""
-            end
-            if FPSBoost.AdvancedFPSBoostSettings.MeshPartSettings.Destroy then
-                Instance:Destroy()
-            end
-        elseif Instance:IsA("BasePart") and FPSBoost.FPSBoostSettings["Low Quality Parts"] then
+        if Instance:IsA("BasePart") and FPSBoost.FPSBoostSettings["Low Quality Parts"] then
             Instance.Material = Enum.Material.Plastic
             Instance.Reflectance = 0
         end
@@ -173,28 +179,33 @@ local StarterGui = game:GetService("StarterGui")
 local MaterialService = game:GetService("MaterialService")
 local workspace = game:GetService("Workspace")
 
-coroutine.wrap(function()
-    if FPSBoost.FPSBoostSettings["Low Water Graphics"] then
-        if not workspace:FindFirstChildOfClass("Terrain") then
-            repeat
-                task.wait()
-            until workspace:FindFirstChildOfClass("Terrain")
-        end
-        local terrain = workspace:FindFirstChildOfClass("Terrain")
-        terrain.WaterWaveSize = 0
-        terrain.WaterWaveSpeed = 0
-        terrain.WaterReflectance = 0
-        terrain.WaterTransparency = 0
-        if sethiddenproperty then
-            sethiddenproperty(terrain, "Decoration", false)
-        else
-            warn("Your exploit does not support sethiddenproperty, please use a different exploit.")
+function FPSBoost:applyLowWaterGraphics()
+    local terrain = workspace:FindFirstChildOfClass("Terrain")
+    if terrain then
+        if self.FPSBoostSettings["Low Water Graphics"] then
+            terrain.WaterWaveSize = 0
+            terrain.WaterWaveSpeed = 0
+            terrain.WaterReflectance = 0
+            terrain.WaterTransparency = 0
+            if sethiddenproperty then
+                sethiddenproperty(terrain, "Decoration", false)
+            else
+                warn("Your exploit does not support sethiddenproperty, please use a different exploit.")
+            end
+        elseif self.originalSettings.LowWaterGraphics.Decoration then
+            terrain.WaterWaveSize = self.originalSettings.LowWaterGraphics.WaterWaveSize
+            terrain.WaterWaveSpeed = self.originalSettings.LowWaterGraphics.WaterWaveSpeed
+            terrain.WaterReflectance = self.originalSettings.LowWaterGraphics.WaterReflectance
+            terrain.WaterTransparency = self.originalSettings.LowWaterGraphics.WaterTransparency
+            if sethiddenproperty then
+                sethiddenproperty(terrain, "Decoration", self.originalSettings.LowWaterGraphics.Decoration)
+            end
         end
     end
-end)()
+end
 
-coroutine.wrap(function()
-    if FPSBoost.FPSBoostSettings["No Shadows"] then
+function FPSBoost:applyNoShadows()
+    if self.FPSBoostSettings["No Shadows"] then
         Lighting.GlobalShadows = false
         Lighting.FogEnd = 9e9
         Lighting.ShadowSoftness = 0
@@ -203,31 +214,53 @@ coroutine.wrap(function()
         else
             warn("Your exploit does not support sethiddenproperty, please use a different exploit.")
         end
+    elseif self.originalSettings.NoShadows.Technology then
+        Lighting.GlobalShadows = self.originalSettings.NoShadows.GlobalShadows
+        Lighting.FogEnd = self.originalSettings.NoShadows.FogEnd
+        Lighting.ShadowSoftness = self.originalSettings.NoShadows.ShadowSoftness
+        if sethiddenproperty then
+            sethiddenproperty(Lighting, "Technology", self.originalSettings.NoShadows.Technology)
+        end
     end
-end)()
+end
 
-coroutine.wrap(function()
-    if FPSBoost.FPSBoostSettings["Low Rendering"] then
+function FPSBoost:applyLowRendering()
+    if self.FPSBoostSettings["Low Rendering"] then
         settings().Rendering.QualityLevel = 1
         settings().Rendering.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level04
+    else
+        settings().Rendering.QualityLevel = self.originalSettings.LowRendering.QualityLevel
+        settings().Rendering.MeshPartDetailLevel = self.originalSettings.LowRendering.MeshPartDetailLevel
     end
-end)()
+end
 
-coroutine.wrap(function()
-    local fpsCap = FPSBoost.FPSBoostSettings["FPS Cap"]
+function FPSBoost:applyFPSCap()
+    local fpsCap = self.FPSBoostSettings["FPS Cap"]
     if fpsCap then
         if setfpscap then
-            if type(fpsCap) == "string" or type(fpsCap) == "number" then
-                setfpscap(tonumber(fpsCap))
-                warn("FPS Capped to " .. tostring(fpsCap))
-            elseif fpsCap == true then
-                setfpscap(1e6)
-                warn("FPS Uncapped")
-            end
+            local capValue = (type(fpsCap) == "number" or type(fpsCap) == "string") and tonumber(fpsCap) or (fpsCap == true and 1e6 or self.originalSettings.FPSCap.Cap)
+            setfpscap(capValue)
+            warn("FPS Capped to " .. tostring(capValue))
         else
             warn("FPS Cap Failed")
         end
+    elseif self.originalSettings.FPSCap.Cap then
+        setfpscap(self.originalSettings.FPSCap.Cap)
     end
-end)()
+end
+
+
+function FPSBoost:initialize()
+    self:applyLowWaterGraphics()
+    self:applyNoShadows()
+    self:applyLowRendering()
+    self:applyFPSCap()
+
+    workspace.DescendantAdded:Connect(function(instance)
+        CheckIfBad(instance)
+    end)
+end
+
+FPSBoost:initialize(settingsMapping)
 
 return FPSBoost
