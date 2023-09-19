@@ -77,7 +77,7 @@ function FPSBoost:modifyDescendant(descendant)
         end
     end
 
-    if descendant:IsA("PointLight") or descendant:IsA("SpotLight") or descendant:IsA("SurfaceLight") then
+    if (descendant:IsA("PointLight") or descendant:IsA("SpotLight") or descendant:IsA("SurfaceLight")) then
         if not originalValues then
             originalValues = { Enabled = descendant.Enabled }
             self.originalValues[descendant] = originalValues
@@ -112,7 +112,7 @@ function FPSBoost:applySettings()
                 end
             end
 
-            if (descendant:IsA("ParticleEmitter") or descendant:IsA("Trail")) then
+            if (descendant:IsA("ParticleEmitter") or descendant:IsA("Trail")) and originalValues.Enabled ~= nil then
                 if self.settings.DisableParticles then
                     descendant.Enabled = false
                 else
@@ -120,7 +120,7 @@ function FPSBoost:applySettings()
                 end
             end
 
-            if descendant:IsA("PointLight") or descendant:IsA("SpotLight") or descendant:IsA("SurfaceLight") then
+            if (descendant:IsA("PointLight") or descendant:IsA("SpotLight") or descendant:IsA("SurfaceLight")) and originalValues.Enabled ~= nil then
                 if self.settings.DisableLights then
                     descendant.Enabled = false
                 else
@@ -129,6 +129,18 @@ function FPSBoost:applySettings()
             end
         end
     end
+
+    for i, e in ipairs(game.Lighting:GetChildren()) do
+        if e:IsA("BlurEffect") or e:IsA("SunRaysEffect") or e:IsA("ColorCorrectionEffect") or e:IsA("BloomEffect") or e:IsA("DepthOfFieldEffect") then
+            if self.settings.DisableEffects then
+                e.Enabled = false
+            else
+                e.Enabled = self.originalValues[e] and self.originalValues[e].Enabled or true
+            end
+        end
+    end
+end
+
 
     for i, e in ipairs(game.Lighting:GetChildren()) do
         if e:IsA("BlurEffect") or e:IsA("SunRaysEffect") or e:IsA("ColorCorrectionEffect") or e:IsA("BloomEffect") or e:IsA("DepthOfFieldEffect") then
