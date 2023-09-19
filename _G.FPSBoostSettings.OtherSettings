@@ -9,6 +9,7 @@ local ME = Players.LocalPlayer
 
 _G.FPSBoostSettings = {
     OtherSettings = {
+        ["FPS Cap"] = 240, -- Set this true to uncap FPS
         ["No Particles"] = false,
         ["No Camera Effects"] = false,
         ["No Explosions"] = false,
