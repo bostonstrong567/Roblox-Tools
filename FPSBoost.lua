@@ -5,6 +5,32 @@ if not game:IsLoaded() then
 end
 
 local FPSBoost = {}
+FPSBoost.ObjectPool = {}
+
+function FPSBoost:createObjectPool(classType, initialSize)
+    local pool = {}
+    for i = 1, initialSize do
+        local obj = Instance.new(classType)
+        obj.Parent = nil
+        table.insert(pool, obj)
+    end
+    self.ObjectPool[classType] = pool
+end
+
+function FPSBoost:getObjectFromPool(classType)
+    local pool = self.ObjectPool[classType]
+    if #pool > 0 then
+        return table.remove(pool)
+    else
+        return Instance.new(classType)
+    end
+end
+
+function FPSBoost:returnObjectToPool(classType, obj)
+    obj.Parent = nil
+    table.insert(self.ObjectPool[classType], obj)
+end
+
 local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 local workspace = game:GetService("Workspace")
@@ -168,6 +194,13 @@ local function CheckIfBad(instance)
                     FPSBoost.originalInstanceSettings[instance] = {}
                 end
                 if settingInfo.method == "Destroy" then
+                    if instance:IsA("Part") or instance:IsA("MeshPart") then
+                        for _, child in ipairs(instance:GetChildren()) do
+                            if child:IsA("Trail") or child:IsA("Attachment") then
+                                child:Destroy()
+                            end
+                        end
+                    end
                     instance:Destroy()
                 else
                     FPSBoost.originalInstanceSettings[instance][settingInfo.attribute] = instance[settingInfo.attribute]
@@ -348,9 +381,13 @@ function FPSBoost:applyLowRendering()
     if lowRendering then
         settings().Rendering.QualityLevel = 1
         settings().Rendering.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level04
+        workspace.Terrain.WaterTransparency = 1
+        workspace.Terrain.WaterWaveSize = 0
     else
         settings().Rendering.QualityLevel = renderingSettings.QualityLevel
         settings().Rendering.MeshPartDetailLevel = renderingSettings.MeshPartDetailLevel
+        workspace.Terrain.WaterTransparency = renderingSettings.WaterTransparency or 0.6
+        workspace.Terrain.WaterWaveSize = renderingSettings.WaterWaveSize or 8
     end
 end
 
