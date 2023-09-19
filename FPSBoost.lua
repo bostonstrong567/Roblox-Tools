@@ -23,7 +23,7 @@ local function storeOriginalValues()
             originalValues[v] = { Enabled = v.Enabled }
         end
     end
-    for _, e in ipairs(game.Lighting:GetChildren()) do
+    for _, e in ipairs(game:GetService("Lighting"):GetChildren()) do
         if e:IsA("BlurEffect") or e:IsA("SunRaysEffect") or e:IsA("ColorCorrectionEffect") or e:IsA("BloomEffect") or e:IsA("DepthOfFieldEffect") then
             originalValues[e] = { Enabled = e.Enabled }
         end
