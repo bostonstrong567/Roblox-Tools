@@ -6,7 +6,20 @@ end
 
 local Players = game:GetService("Players")
 local ME = Players.LocalPlayer
-local FPSBoostSettings = {
+_G.FPSBoostSettings ={
+    OtherSettings = {
+        ["No Particles"] = false,
+        ["No Camera Effects"] = false,
+        ["No Explosions"] = false,
+        ["No Clothes"] = false,
+        ["Low Water Graphics"] = false,
+        ["No Shadows"] = false,
+        ["Low Rendering"] = false,
+        ["Low Quality Parts"] = false
+    }
+}
+
+_G.AdvancedFPSBoostSettings ={
     PlayerSettings = {
         ["Ignore Me"] = true,
         ["Ignore Others"] = true,
@@ -42,16 +55,6 @@ local FPSBoostSettings = {
         NoMesh = false,
         Destroy = false
     },
-    OtherSettings = {
-        ["No Particles"] = false,
-        ["No Camera Effects"] = false,
-        ["No Explosions"] = false,
-        ["No Clothes"] = false,
-        ["Low Water Graphics"] = false,
-        ["No Shadows"] = false,
-        ["Low Rendering"] = false,
-        ["Low Quality Parts"] = false
-    }
 }
 
 local function PartOfCharacter(Instance)
