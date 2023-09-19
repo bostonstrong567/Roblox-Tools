@@ -42,7 +42,6 @@ function FPSBoost:applySettings()
 end
 
 function FPSBoost:toggleLowQualityParts()
-    print("Toggling Low Quality Parts")  -- Add this line
     for descendant, originalValues in pairs(self.originalValues) do
         if descendant:IsA("BasePart") and not descendant:IsA("Texture") then
             if self.settings.LowQualityParts then
