@@ -43,42 +43,50 @@ local function newLine(info)
 end
 
 function PathfindingModule.GoToPart(model, Visualization, TimeItTakes)
-    local Player = game.Players.LocalPlayer
-    local Root = Player.Character.HumanoidRootPart.CFrame
-    local Start = (Root * CF(0, -2, 0)).p
-    local End = model:IsA("Model") and model.PrimaryPart.Position or model.Position
-
-    if Visualization then
-        createPart("Start", Start, Color3.fromRGB(0,255,0), V3(0.5,0.5,0.5))
-        createPart("End", End, Color3.fromRGB(255,0,0), V3(0.5,0.5,0.5))
-    end
-
-    local MAP = mapping:createMap(Root.p+V3(-100, 0, -100), Root.p+V3(100, 0, 100), V3(1,1,1), 5, Params)
-
-    local startTime = TimeItTakes and os.clock() or nil
-    local Path = pathfinding:getPath(MAP, Start, End, V3(1,1,1), true)
-
-    if TimeItTakes then
-        warn("Time taken for pathfinding: ", os.clock() - startTime)
-    end
-
-    if Visualization then
-        local previous = Path[1]
-        for _, node in next, Path do
-            newLine({
-                PointA = previous,
-                PointB = node,
-                Thickness = 0.15,
-                Color = Color3.fromRGB(255, 0, 255)
-            })
-            previous = node
+    coroutine.wrap(function()
+        local Player = game.Players.LocalPlayer
+        local Root = Player.Character.HumanoidRootPart.CFrame
+        local Start = (Root * CF(0, -2, 0)).p
+        local End = model:IsA("Model") and model.PrimaryPart.Position or model.Position
+        local maxTime = 1 -- maximum time (in seconds) allowed for the pathfinding
+        
+        if Visualization then
+            createPart("Start", Start, Color3.fromRGB(0,255,0), V3(0.5,0.5,0.5))
+            createPart("End", End, Color3.fromRGB(255,0,0), V3(0.5,0.5,0.5))
         end
-    end
 
-    for _, p in next, Path do
-        Player.Character.Humanoid:MoveTo(p)
-        Player.Character.Humanoid.MoveToFinished:Wait()
-    end
+        local startTime = tick()
+        local MAP = mapping:createMap(Root.p + V3(-100, 0, -100), Root.p + V3(100, 0, 100), V3(1,1,1), 5, Params)
+        
+        if tick() - startTime > maxTime then
+            warn("Pathfinding took too long. Aborting.")
+            return
+        end
+
+        local Path = pathfinding:getPath(MAP, Start, End, V3(1,1,1), true)
+        
+        if TimeItTakes then
+            warn("Time taken for pathfinding: ", tick() - startTime)
+        end
+
+        if Visualization then
+            local previous = Path[1]
+            for _, node in next, Path do
+                newLine({
+                    PointA = previous,
+                    PointB = node,
+                    Thickness = 0.15,
+                    Color = Color3.fromRGB(255, 0, 255)
+                })
+                previous = node
+            end
+        end
+
+        for _, p in next, Path do
+            Player.Character.Humanoid:MoveTo(p)
+            Player.Character.Humanoid.MoveToFinished:Wait()
+        end
+    end)()
 end
 
 return PathfindingModule
