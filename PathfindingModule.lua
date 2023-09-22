@@ -92,6 +92,7 @@ function EasyPath:WalkToPath(CustomPath)
 end
 
 function EasyPath:WalkToBasicPath(CustomPath)
+    local PlayerWalkspeed = tonumber(game:GetService("Players").LocalPlayer.Character.Humanoid.WalkSpeed)
     local WalkToPathfinding = game:GetService("PathfindingService"):CreatePath()
 
     if typeof(CustomPath.Destination) == "CFrame" then
@@ -103,49 +104,24 @@ function EasyPath:WalkToBasicPath(CustomPath)
         WalkToPathfinding:ComputeAsync(game:GetService("Players").LocalPlayer.Character.HumanoidRootPart.Position, CustomPath.Destination.Position + CustomPath.PathOffset)
     end
 
-    if WalkToPathfinding.Status == Enum.PathStatus.Success then
-        if CustomPath.DebugMode then
-            print("Status: Starting...")
-        end
+    if WalkToPathfinding.Status == Enum.PathStatus.Complete then
         local WayPoints = WalkToPathfinding:GetWaypoints()
-        for i = 1, #WayPoints do
-            local point = WayPoints[i]
+        for i, point in pairs(WayPoints) do
             game:GetService("Players").LocalPlayer.Character.Humanoid:MoveTo(point.Position)
             local Success = game:GetService("Players").LocalPlayer.Character.Humanoid.MoveToFinished:Wait()
-
             if not Success then
-                if CustomPath.DebugMode then
-                    print("Status: Broke, Trying Again...")
-                end
                 game:GetService("Players").LocalPlayer.Character.Humanoid:MoveTo(point.Position)
                 if not game:GetService("Players").LocalPlayer.Character.Humanoid.MoveToFinished:Wait() then
                     break
                 end
-            else
-                if CustomPath.DebugMode then
-                    print("Status: Walking To The Part...")
-                end
             end
         end
     else
-        if CustomPath.DebugMode then
-            print("Status: Impossible To Reach Part.")
-        end
         return
-    end
-    if CustomPath.DebugMode then
-        print("Status: Got To The Part!")
     end
     if game:GetService("Workspace"):FindFirstChild("EasyPath_CFrameReference") then
         game:GetService("Workspace").EasyPath_CFrameReference:Remove()
     end
-end
-
-function EasyPath:FinishedPathfinding()
-	repeat
-		wait()
-	until game:GetService("Players").LocalPlayer.Character and game:GetService("Players").LocalPlayer.Character:FindFirstChild("Humanoid") and game:GetService("Players").LocalPlayer.Character.Humanoid.MoveToFinished
-	return true
 end
 
 function EasyPath:PlayerWalkTo(Destination, Offset)
