@@ -1,9 +1,9 @@
 local pathfind = {}
 local human = game.Players.LocalPlayer.Character.Humanoid
-local Body = game.Players.LocalPlayer.Character.Torso or game.Players.LocalPlayer.Character.HumanoidRootPart
-pathfind.Destination = "" -- Change PartNameHere to the part.
+local Body = game.Players.LocalPlayer.Character.HumanoidRootPart
+pathfind.Destination = nil
 local path = game:GetService("PathfindingService"):CreatePath()
-pathfind.path:ComputeAsync(Body.Position, Destination.Position)
+pathfind.path:ComputeAsync(Body.Position, pathfind.Destination.Position)
 if path.Status == Enum.PathStatus.Success then
    local wayPoints = path:GetWaypoints()
    for i = 1, #wayPoints do
