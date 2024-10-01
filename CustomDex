@@ -11088,7 +11088,7 @@ Main = (function()
 		})
 
         local CustomIconsTable = {
-            Remote_Spy = ["rbxassetid://4384392464"]
+            Remote_Spy = "rbxassetid://4384392464"
         }
 		
 		-- Fetch version if needed
