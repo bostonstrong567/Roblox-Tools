@@ -1,8 +1,10 @@
+-- Optimized Explorer Dex Module
 local ExplorerDex = {}
-ExplorerDex.nodes = {} -- To store all nodes
+ExplorerDex.nodes = {} -- Store all nodes
 ExplorerDex.debugMode = false -- Debug mode toggle
-ExplorerDex.events = {} -- Custom event system for explorer
+ExplorerDex.events = {} -- Custom event system
 ExplorerDex.expanded = {} -- Track expanded nodes
+ExplorerDex.cache = {} -- Cache nodes once loaded
 
 -- Debugging function
 local function debugPrint(message)
@@ -35,43 +37,29 @@ function ExplorerDex.listenEvent(eventName, callback)
     return ExplorerDex.events[eventName].Event:Connect(callback)
 end
 
--- Function to add an object to the Explorer (with lazy loading for children)
+-- Function to add an object (with lazy loading)
 function ExplorerDex.addObject(objectRoot)
-    if not isValidInstance(objectRoot) then return end
-    if ExplorerDex.nodes[objectRoot] then return end
+    if not isValidInstance(objectRoot) or ExplorerDex.nodes[objectRoot] then return end
 
-    -- Create a new node for the object
     local parent = objectRoot.Parent
     local newNode = {
         Obj = objectRoot,
         Parent = ExplorerDex.nodes[parent],
-        Children = {}, -- Store children, load lazily
+        Children = {},
+        Cached = false -- Lazy-load children when expanded
     }
+
     ExplorerDex.nodes[objectRoot] = newNode
     debugPrint("Added object: " .. objectRoot:GetFullName())
-
-    -- Lazy-load children only when expanded
-    newNode.Expanded = false
-    newNode.OnExpand = function()
-        if newNode.Expanded then return end
-        newNode.Expanded = true
-        local children = objectRoot:GetChildren()
-
-        for _, child in ipairs(children) do
-            ExplorerDex.addObject(child) -- Lazy load children as needed
-        end
-    end
 
     -- Fire an event when an object is added
     ExplorerDex.fireEvent("ObjectAdded", objectRoot)
 end
 
--- Function to remove an object from the Explorer
+-- Function to remove an object
 function ExplorerDex.removeObject(objectRoot)
-    if not isValidInstance(objectRoot) then return end
-    if not ExplorerDex.nodes[objectRoot] then return end
+    if not isValidInstance(objectRoot) or not ExplorerDex.nodes[objectRoot] then return end
 
-    -- Remove recursively
     for _, child in ipairs(objectRoot:GetChildren()) do
         ExplorerDex.removeObject(child)
     end
@@ -83,34 +71,29 @@ function ExplorerDex.removeObject(objectRoot)
     ExplorerDex.fireEvent("ObjectRemoved", objectRoot)
 end
 
--- Function to move an object to a new parent
-function ExplorerDex.moveObject(objectRoot, newParent)
-    if not isValidInstance(objectRoot) or not isValidInstance(newParent) then return end
-
-    ExplorerDex.addObject(objectRoot)
-    ExplorerDex.addObject(newParent)
-
-    ExplorerDex.nodes[objectRoot].Parent = ExplorerDex.nodes[newParent]
-    objectRoot.Parent = newParent
-    debugPrint("Moved object: " .. objectRoot:GetFullName() .. " to new parent: " .. newParent:GetFullName())
-
-    -- Fire an event that the object moved
-    ExplorerDex.fireEvent("ObjectMoved", objectRoot, newParent)
+-- Lazy-load children only when a node is expanded
+function ExplorerDex.loadChildren(objectRoot)
+    local node = ExplorerDex.nodes[objectRoot]
+    if node and not node.Cached then
+        node.Cached = true
+        for _, child in ipairs(objectRoot:GetChildren()) do
+            ExplorerDex.addObject(child)
+        end
+    end
 end
 
--- Function to toggle node expansion (show/hide children)
+-- Function to toggle expansion of a node
 function ExplorerDex.toggleExpand(objectRoot)
     if not isValidInstance(objectRoot) or not ExplorerDex.nodes[objectRoot] then return end
 
+    local node = ExplorerDex.nodes[objectRoot]
     ExplorerDex.expanded[objectRoot] = not ExplorerDex.expanded[objectRoot]
-    debugPrint("Toggled expansion for: " .. objectRoot:GetFullName())
 
-    -- Lazy-load children when expanded
     if ExplorerDex.expanded[objectRoot] then
-        ExplorerDex.nodes[objectRoot].OnExpand()
+        ExplorerDex.loadChildren(objectRoot) -- Lazy load when expanded
     end
 
-    -- Fire event when toggling
+    debugPrint("Toggled expansion for: " .. objectRoot:GetFullName())
     ExplorerDex.fireEvent("ObjectToggled", objectRoot, ExplorerDex.expanded[objectRoot])
 end
 
@@ -128,10 +111,11 @@ end
 -- Function to clear all nodes
 function ExplorerDex.clear()
     ExplorerDex.nodes = {}
+    ExplorerDex.cache = {}
     debugPrint("Cleared all Explorer nodes.")
 end
 
--- Function to dynamically add all game objects
+-- Function to automatically add all game objects
 function ExplorerDex.autoAddAllObjects()
     for _, object in ipairs(game:GetDescendants()) do
         ExplorerDex.addObject(object)
@@ -140,7 +124,7 @@ function ExplorerDex.autoAddAllObjects()
     ExplorerDex.setupListeners()
 end
 
--- Listeners for real-time additions/removals
+-- Setup listeners for real-time additions/removals
 function ExplorerDex.setupListeners()
     game.DescendantAdded:Connect(function(newObject)
         ExplorerDex.addObject(newObject)
