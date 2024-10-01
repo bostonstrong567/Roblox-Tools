@@ -1,8 +1,9 @@
--- Explorer Dex Module
+-- Optimized Explorer Dex Module
 local ExplorerDex = {}
-ExplorerDex.nodes = {}  -- Table to store references to all explorer nodes
-ExplorerDex.debugMode = false  -- Enable/Disable debug logging
-ExplorerDex.events = {}  -- Table for custom events to manage object hierarchy
+ExplorerDex.nodes = {} -- To store all nodes
+ExplorerDex.debugMode = false -- Debug mode toggle
+ExplorerDex.events = {} -- Custom event system for explorer
+ExplorerDex.expanded = {} -- Track expanded nodes
 
 -- Debugging function
 local function debugPrint(message)
@@ -11,12 +12,12 @@ local function debugPrint(message)
     end
 end
 
--- Utility function: checks if the given object is a valid Instance
+-- Utility function: checks if the object is a valid Instance
 local function isValidInstance(object)
     return object and typeof(object) == "Instance"
 end
 
--- Event system for adding custom listeners
+-- Custom event system
 function ExplorerDex.createEvent(eventName)
     ExplorerDex.events[eventName] = ExplorerDex.events[eventName] or Instance.new("BindableEvent")
     return ExplorerDex.events[eventName]
@@ -35,96 +36,73 @@ function ExplorerDex.listenEvent(eventName, callback)
     return ExplorerDex.events[eventName].Event:Connect(callback)
 end
 
--- Function to add an object to the Explorer
+-- Function to add an object and its descendants to the Explorer
 function ExplorerDex.addObject(objectRoot)
-    if not isValidInstance(objectRoot) then
-        debugPrint("Attempted to add an invalid object.")
-        return
-    end
-    if ExplorerDex.nodes[objectRoot] then
-        debugPrint("Object already exists in Explorer.")
-        return
-    end
+    if not isValidInstance(objectRoot) then return end
+    if ExplorerDex.nodes[objectRoot] then return end
 
-    -- Add the object to the nodes table
-    ExplorerDex.nodes[objectRoot] = {
+    local parent = objectRoot.Parent
+    local newNode = {
         Obj = objectRoot,
-        Parent = objectRoot.Parent,
+        Parent = ExplorerDex.nodes[parent],
         Children = {},
-        Expanded = false  -- Start collapsed
     }
+    ExplorerDex.nodes[objectRoot] = newNode
     debugPrint("Added object: " .. objectRoot:GetFullName())
 
-    -- Add all descendants recursively
-    for _, descendant in ipairs(objectRoot:GetDescendants()) do
-        ExplorerDex.addObject(descendant)
+    -- Recursively add children
+    for _, child in ipairs(objectRoot:GetChildren()) do
+        ExplorerDex.addObject(child)
     end
 
-    -- Fire an event that an object was added
+    -- Fire an event when an object is added
     ExplorerDex.fireEvent("ObjectAdded", objectRoot)
 end
 
 -- Function to remove an object from the Explorer
 function ExplorerDex.removeObject(objectRoot)
-    if not isValidInstance(objectRoot) then
-        debugPrint("Attempted to remove an invalid object.")
-        return
-    end
-    if not ExplorerDex.nodes[objectRoot] then
-        debugPrint("Object does not exist in Explorer.")
-        return
+    if not isValidInstance(objectRoot) then return end
+    if not ExplorerDex.nodes[objectRoot] then return end
+
+    -- Remove recursively
+    for _, child in ipairs(objectRoot:GetChildren()) do
+        ExplorerDex.removeObject(child)
     end
 
-    -- Remove descendants first
-    for _, descendant in ipairs(objectRoot:GetDescendants()) do
-        ExplorerDex.removeObject(descendant)
-    end
-
-    -- Remove the root node
     ExplorerDex.nodes[objectRoot] = nil
     debugPrint("Removed object: " .. objectRoot:GetFullName())
 
-    -- Fire an event that an object was removed
+    -- Fire an event when an object is removed
     ExplorerDex.fireEvent("ObjectRemoved", objectRoot)
 end
 
 -- Function to move an object to a new parent
 function ExplorerDex.moveObject(objectRoot, newParent)
-    if not isValidInstance(objectRoot) or not isValidInstance(newParent) then
-        debugPrint("Invalid move: object or new parent is invalid.")
-        return
-    end
+    if not isValidInstance(objectRoot) or not isValidInstance(newParent) then return end
 
-    -- Ensure both object and parent are in the Explorer
     ExplorerDex.addObject(objectRoot)
     ExplorerDex.addObject(newParent)
 
-    -- Update the node's parent
-    ExplorerDex.nodes[objectRoot].Parent = newParent
+    ExplorerDex.nodes[objectRoot].Parent = ExplorerDex.nodes[newParent]
     objectRoot.Parent = newParent
-
     debugPrint("Moved object: " .. objectRoot:GetFullName() .. " to new parent: " .. newParent:GetFullName())
-    
-    -- Fire an event that an object was moved
+
+    -- Fire an event that the object moved
     ExplorerDex.fireEvent("ObjectMoved", objectRoot, newParent)
 end
 
--- Function to toggle expansion of an object (to show/hide children)
+-- Function to toggle node expansion (show/hide children)
 function ExplorerDex.toggleExpand(objectRoot)
-    if not isValidInstance(objectRoot) or not ExplorerDex.nodes[objectRoot] then
-        debugPrint("Attempted to toggle expand on an invalid object.")
-        return
-    end
+    if not isValidInstance(objectRoot) or not ExplorerDex.nodes[objectRoot] then return end
 
-    -- Toggle the expanded state
-    ExplorerDex.nodes[objectRoot].Expanded = not ExplorerDex.nodes[objectRoot].Expanded
+    ExplorerDex.expanded[objectRoot] = not ExplorerDex.expanded[objectRoot]
     debugPrint("Toggled expansion for: " .. objectRoot:GetFullName())
 
-    -- Fire an event when an object is toggled
-    ExplorerDex.fireEvent("ObjectToggled", objectRoot, ExplorerDex.nodes[objectRoot].Expanded)
+    -- Fire event when toggling
+    ExplorerDex.fireEvent("ObjectToggled", objectRoot, ExplorerDex.expanded[objectRoot])
 end
 
--- Function to get all nodes (useful for UI or external systems)
+-- Function to get all explorer nodes
 function ExplorerDex.getNodes()
     return ExplorerDex.nodes
 end
@@ -135,41 +113,37 @@ function ExplorerDex.setDebugMode(state)
     debugPrint("Debug mode set to: " .. tostring(state))
 end
 
--- Function to clear all nodes (useful for resetting the Explorer)
+-- Function to clear all nodes
 function ExplorerDex.clear()
     ExplorerDex.nodes = {}
     debugPrint("Cleared all Explorer nodes.")
 end
 
--- Function to automatically add all objects in the game
+-- Function to add all game objects dynamically
 function ExplorerDex.autoAddAllObjects()
     for _, object in ipairs(game:GetDescendants()) do
         ExplorerDex.addObject(object)
     end
-    debugPrint("Auto-added all objects in the game.")
-
-    -- Setup dynamic listeners
-    ExplorerDex.setupChangeListeners()
+    debugPrint("Auto-added all game objects.")
+    ExplorerDex.setupListeners()
 end
 
--- Setup dynamic listeners for new objects and removals
-function ExplorerDex.setupChangeListeners()
-    -- Listen for new objects being added
+-- Listeners for real-time additions/removals
+function ExplorerDex.setupListeners()
     game.DescendantAdded:Connect(function(newObject)
         ExplorerDex.addObject(newObject)
     end)
 
-    -- Listen for objects being removed
     game.DescendantRemoving:Connect(function(removedObject)
         ExplorerDex.removeObject(removedObject)
     end)
 end
 
--- Initialize the Explorer Dex (entry point)
+-- Initialize Explorer Dex
 function ExplorerDex.init()
     ExplorerDex.autoAddAllObjects()
     debugPrint("Explorer Dex initialized.")
 end
 
--- Return the module to be required
+-- Return the module
 return ExplorerDex
