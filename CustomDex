@@ -11023,7 +11023,7 @@ Main = (function()
 		
 		Main.CreateApp({Name = "Script Viewer", IconMap = Main.LargeIcons, Icon = "Script_Viewer", Window = ScriptViewer.Window})
 
-        Main.CreateApp({Name = "Remote Spy", IconMap = Main.LargeIcons, Icon = "Remote_Spy", Window = ScriptViewer.Window})
+        Main.CreateApp({Name = "Remote Spy", Icon = "rbxassetid://4384392464", Window = ScriptViewer.Window})
 
 		local cptsOnMouseClick = nil
 		Main.CreateApp({Name = "Click part to select", IconMap = Main.LargeIcons, Icon = 6, OnClick = function(callback)
@@ -11087,7 +11087,6 @@ Main = (function()
             Explorer = 0, 
             Properties = 1, 
             Script_Viewer = 2,
-            Remote_Spy = "rbxassetid://4384392464",
         })
 		
 		-- Fetch version if needed
