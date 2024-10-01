@@ -11023,7 +11023,7 @@ Main = (function()
 		
 		Main.CreateApp({Name = "Script Viewer", IconMap = Main.LargeIcons, Icon = "Script_Viewer", Window = ScriptViewer.Window})
 
-        Main.CreateApp({Name = "Remote Spy", IconMap = CustomIconsTable, Icon = "Remote_Spy", Window = ScriptViewer.Window})
+        Main.CreateApp({Name = "Remote Spy", IconMap = Main.LargeIcons, Icon = "Remote_Spy", Window = ScriptViewer.Window})
 
 		local cptsOnMouseClick = nil
 		Main.CreateApp({Name = "Click part to select", IconMap = Main.LargeIcons, Icon = 6, OnClick = function(callback)
@@ -11082,14 +11082,13 @@ Main = (function()
 			SelectChildren = 28,       SelectChildren_Disabled = 29,    InsertObject = 30,     ViewScript = 31,        AddStar = 32,         RemoveStar = 33,          Script_Disabled = 34,
 			LocalScript_Disabled = 35, Play = 36,                       Pause = 37,            Rename_Disabled = 38
 		})
-		Main.LargeIcons = Lib.IconMap.new("rbxassetid://6579106223",256,256,32,32)
-		Main.LargeIcons:SetDict({
-			Explorer = 0, Properties = 1, Script_Viewer = 2,
-		})
-
-        local CustomIconsTable = {
-            Remote_Spy = "rbxassetid://4384392464"
-        }
+        Main.LargeIcons = Lib.IconMap.new("rbxassetid://6579106223",256,256,32,32)
+        Main.LargeIcons:SetDict({
+            Explorer = 0, 
+            Properties = 1, 
+            Script_Viewer = 2,
+            Remote_Spy = "rbxassetid://4384392464",
+        })
 		
 		-- Fetch version if needed
 		intro.SetProgress("Fetching Roblox Version",0.2)
