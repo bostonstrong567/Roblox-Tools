@@ -77,12 +77,13 @@ end
 function ExplorerDex.loadChildren(objectRoot)
     local node = ExplorerDex.nodes[objectRoot]
     if node and not node.Cached then
-        node.Cached = true
+        node.Cached = true -- Mark as cached to prevent reloading
         for _, child in ipairs(objectRoot:GetChildren()) do
-            ExplorerDex.addObject(child)
+            ExplorerDex.addObject(child) -- Only load children when required
         end
     end
 end
+
 
 -- Function to toggle expansion of a node
 function ExplorerDex.toggleExpand(objectRoot)
@@ -92,12 +93,13 @@ function ExplorerDex.toggleExpand(objectRoot)
     ExplorerDex.expanded[objectRoot] = not ExplorerDex.expanded[objectRoot]
 
     if ExplorerDex.expanded[objectRoot] then
-        ExplorerDex.loadChildren(objectRoot) -- Lazy load when expanded
+        ExplorerDex.loadChildren(objectRoot) -- Lazy load children only when expanded
     end
 
     debugPrint("Toggled expansion for: " .. objectRoot:GetFullName())
     ExplorerDex.fireEvent("ObjectToggled", objectRoot, ExplorerDex.expanded[objectRoot])
 end
+
 
 -- Function to get all explorer nodes
 function ExplorerDex.getNodes()
@@ -113,9 +115,10 @@ end
 -- Function to clear all nodes
 function ExplorerDex.clear()
     ExplorerDex.nodes = {}
-    ExplorerDex.cache = {}
+    ExplorerDex.cache = {} -- Also clear the cache
     debugPrint("Cleared all Explorer nodes.")
 end
+
 
 -- Function to dynamically add all game objects
 function ExplorerDex.autoAddAllObjects()
