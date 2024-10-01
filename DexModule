@@ -1,8 +1,7 @@
--- Optimized Explorer Dex Module
 local ExplorerDex = {}
-ExplorerDex.nodes = {} -- Store all nodes
+ExplorerDex.nodes = {} -- To store all nodes
 ExplorerDex.debugMode = false -- Debug mode toggle
-ExplorerDex.events = {} -- Custom event system
+ExplorerDex.events = {} -- Custom event system for explorer
 ExplorerDex.expanded = {} -- Track expanded nodes
 ExplorerDex.cache = {} -- Cache nodes once loaded
 
@@ -37,18 +36,19 @@ function ExplorerDex.listenEvent(eventName, callback)
     return ExplorerDex.events[eventName].Event:Connect(callback)
 end
 
--- Function to add an object (with lazy loading)
+-- Function to add an object to the Explorer
 function ExplorerDex.addObject(objectRoot)
-    if not isValidInstance(objectRoot) or ExplorerDex.nodes[objectRoot] then return end
+    if not isValidInstance(objectRoot) then return end
+    if ExplorerDex.nodes[objectRoot] then return end
 
+    -- Create a new node for the object
     local parent = objectRoot.Parent
     local newNode = {
         Obj = objectRoot,
         Parent = ExplorerDex.nodes[parent],
-        Children = {},
-        Cached = false -- Lazy-load children when expanded
+        Children = {}, -- Store children, load lazily
+        Cached = false -- Whether children have been cached
     }
-
     ExplorerDex.nodes[objectRoot] = newNode
     debugPrint("Added object: " .. objectRoot:GetFullName())
 
@@ -56,10 +56,12 @@ function ExplorerDex.addObject(objectRoot)
     ExplorerDex.fireEvent("ObjectAdded", objectRoot)
 end
 
--- Function to remove an object
+-- Function to remove an object from the Explorer
 function ExplorerDex.removeObject(objectRoot)
-    if not isValidInstance(objectRoot) or not ExplorerDex.nodes[objectRoot] then return end
+    if not isValidInstance(objectRoot) then return end
+    if not ExplorerDex.nodes[objectRoot] then return end
 
+    -- Remove recursively
     for _, child in ipairs(objectRoot:GetChildren()) do
         ExplorerDex.removeObject(child)
     end
@@ -115,7 +117,7 @@ function ExplorerDex.clear()
     debugPrint("Cleared all Explorer nodes.")
 end
 
--- Function to automatically add all game objects
+-- Function to dynamically add all game objects
 function ExplorerDex.autoAddAllObjects()
     for _, object in ipairs(game:GetDescendants()) do
         ExplorerDex.addObject(object)
@@ -124,7 +126,7 @@ function ExplorerDex.autoAddAllObjects()
     ExplorerDex.setupListeners()
 end
 
--- Setup listeners for real-time additions/removals
+-- Listeners for real-time additions/removals
 function ExplorerDex.setupListeners()
     game.DescendantAdded:Connect(function(newObject)
         ExplorerDex.addObject(newObject)
