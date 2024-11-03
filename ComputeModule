@@ -1,6 +1,11 @@
+--!strict
+
 local RunService = game:GetService("RunService")
 
+-- SignalModule Implementation
 local SignalModule = {}
+
+local EmptyFunction = function() end
 
 local function Connection(Table, Function)
 	local Connection = { Connected = true }
@@ -15,15 +20,17 @@ local function Connection(Table, Function)
 	return Connection
 end
 
-export type ConnectionType = typeof(Connection({}, function() end))
+export type ConnectionType = typeof(Connection({}, EmptyFunction))
 
 function SignalModule.new()
-	local Signal = { Event = {} }
+	local Signal = {}
+	Signal.Event = {}
+
 	local ConnectedFunctionsOnce = {}
 	local WaitingCoroutines = {}
 	local ScheduledCoroutines = {}
-	
-	function Signal.Event:Once(Function : () -> ()): ConnectionType
+
+	function Signal.Event:Once(Function : () -> ()) : ConnectionType
 		table.insert(ConnectedFunctionsOnce, Function)
 		return Connection(ConnectedFunctionsOnce, Function)
 	end
@@ -54,9 +61,10 @@ end
 
 export type SignalType = typeof(SignalModule.new())
 
+-- ComputeModule Implementation
 local DEBUG_ENABLED = false
-local TIME_BUFFER = 0.0035
-local MINIMUM_WORK_TIME = 0.001
+local TIME_BUFFER = 0.0035 -- 3.5 ms
+local MINIMUM_WORK_TIME = 0.001 -- 1ms
 local MINIMUM_CYCLES = 1
 local TARGET_FPS = RunService:IsServer() and 60 or "Automatic"
 
@@ -76,6 +84,45 @@ local function Work(ThreadAmount, ResumeThread, RemoveDeadThread)
 	else 
 		ResumeThread(Thread)
 	end
+end
+
+local function CycleThreads_DEBUG(FrameEndTime)
+	local CalculationTime = 0
+	local TotalTime = os.clock()
+	local ThreadsRan = 0
+	local ThreadAmount = #RunningThreads
+	if ThreadAmount == 0 then return end
+	
+	local function RemoveDeadThread(Thread)
+		table.remove(RunningThreads, Index)
+		ThreadEndedSignal[Thread]:Fire()
+		ThreadEndedSignal[Thread] = nil
+		
+		ThreadAmount -= 1
+		if ThreadAmount == 0 then FrameEndTime = 0 end
+	end
+	
+	local function ResumeThread(Thread)
+		Index += 1
+		ThreadsRan += 1
+		local start = os.clock()
+		local Success, Error = coroutine.resume(Thread)
+		if not Success then warn("[ComputeModule]: "..Error) end
+		CalculationTime += os.clock() - start
+	end
+	
+	for _ = 1, ThreadAmount * MINIMUM_CYCLES do 
+		Work(ThreadAmount, ResumeThread, RemoveDeadThread)
+	end
+	
+	while os.clock() < FrameEndTime do
+		Work(ThreadAmount, ResumeThread, RemoveDeadThread)
+	end
+
+	TotalTime = os.clock() - TotalTime
+	warn(((TotalTime - CalculationTime) * 1000).." ms, "..(((TotalTime - CalculationTime) / TotalTime) * 100).."% overhead")
+	warn(ThreadsRan.." threads resumed")
+	warn(ThreadAmount.." active threads")
 end
 
 local function CycleThreads(FrameEndTime)
@@ -105,6 +152,8 @@ local function CycleThreads(FrameEndTime)
 	end
 end
 
+CycleThreads = DEBUG_ENABLED and CycleThreads_DEBUG or CycleThreads
+
 function ComputeModule:BindFunction(Function)
 	local Thread = coroutine.create(Function)
 	table.insert(RunningThreads, Thread)
@@ -113,17 +162,12 @@ function ComputeModule:BindFunction(Function)
 end
 
 function ComputeModule:EvaluateYield()
-	local Thread = coroutine.running()
-	if table.find(RunningThreads, Thread) then
-		coroutine.yield(Thread)
-	else
-		warn("[ComputeModule] EvaluateYield called outside managed thread context.")
-	end
+	coroutine.yield(coroutine.running())
 end
 
-function ComputeModule:UpdateTargetFPS(TargetFPS)
+function ComputeModule:UpdateTargetFPS(TargetFPS : "Automatic" | number)
 	if type(TargetFPS) ~= "number" and TargetFPS ~= "Automatic" then 
-		error('TargetFPS must be a number or "Automatic"')
+		error('TargetFPS is invalid. TargetFPS must be a number, or "Automatic"') 
 	end
 	TARGET_FPS = TargetFPS
 end
