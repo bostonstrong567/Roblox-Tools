@@ -44,14 +44,6 @@ local function ForceMove(SpeedArg, NoClipArg, TargetArg, CallbackArg, ReturnToSt
 	local Hrp = Char:WaitForChild("HumanoidRootPart")
 	local Hum = Char:FindFirstChildOfClass("Humanoid")
 
-	if Speed < 0 then Speed = 0 end
-	local Reach = (type(Options) == "table" and Options.ReachRadius) or 5
-	local UseFlatXZ = type(Options) == "table" and Options.UseFlatXZ
-	if UseFlatXZ == nil then UseFlatXZ = true end
-	local BaseY = type(Options) == "table" and Options.BaseY
-	if UseFlatXZ and type(BaseY) ~= "number" then BaseY = Hrp.Position.Y end
-	local MaxYSpeed = (type(Options) == "table" and Options.MaxYSpeed) or 250
-
 	local function GetGoal()
 		if typeof(Target) == "Vector3" then return Target end
 		if typeof(Target) == "Instance" then
@@ -59,6 +51,21 @@ local function ForceMove(SpeedArg, NoClipArg, TargetArg, CallbackArg, ReturnToSt
 			if Target:IsA("Model") then return Target:GetPivot().Position end
 		end
 	end
+
+	if Speed < 0 then Speed = 0 end
+	local Reach = (type(Options) == "table" and Options.ReachRadius) or 5
+	local UseFlatXZ = type(Options) == "table" and Options.UseFlatXZ
+	if UseFlatXZ == nil then
+		local GoalHint = GetGoal()
+		if GoalHint and math.abs(GoalHint.Y - Hrp.Position.Y) > 0.05 then
+			UseFlatXZ = false
+		else
+			UseFlatXZ = true
+		end
+	end
+	local BaseY = type(Options) == "table" and Options.BaseY
+	if UseFlatXZ and type(BaseY) ~= "number" then BaseY = Hrp.Position.Y end
+	local MaxYSpeed = (type(Options) == "table" and Options.MaxYSpeed) or 250
 
 	local Att = Hrp:FindFirstChild("CFMAtt")
 	if Att then Att:Destroy() end
