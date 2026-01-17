@@ -1,10 +1,38 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
-local function ForceMove(Target, Options)
-	Options = Options or {}
-	local Player = Options.Player or Players.LocalPlayer
-	local Char = Options.Character or (Player and Player.Character)
+local function ForceMove(SpeedArg, NoClipArg, TargetArg, CallbackArg, ReturnToStartArg, OptionsArg)
+	local Speed = 250
+  local UseNoClip = true
+	local Target = TargetArg
+	local Callback = CallbackArg
+	local ReturnToStart = ReturnToStartArg == true
+	local Options = OptionsArg or {}
+
+	if typeof(SpeedArg) == "Instance" or typeof(SpeedArg) == "Vector3" then
+		Target = SpeedArg
+		Options = NoClipArg or {}
+	else
+		Speed = type(SpeedArg) == "number" and SpeedArg
+		if typeof(NoClipArg) == "Instance" or typeof(NoClipArg) == "Vector3" then
+			Target = NoClipArg
+			Callback = TargetArg
+			ReturnToStart = CallbackArg == true
+			Options = ReturnToStartArg or Options
+		else
+			UseNoClip = NoClipArg ~= false
+		end
+	end
+
+	if type(Options) == "table" then
+		if type(Options.Speed) == "number" then Speed = Options.Speed end
+		if Options.NoClip ~= nil then UseNoClip = Options.NoClip == true end
+		if Options.Callback ~= nil then Callback = Options.Callback end
+		if Options.ReturnToStart ~= nil then ReturnToStart = Options.ReturnToStart == true end
+	end
+
+	local Player = (type(Options) == "table" and Options.Player) or Players.LocalPlayer
+	local Char = (type(Options) == "table" and Options.Character) or (Player and Player.Character)
 	if not Char then
 		if Player and Player.CharacterAdded then
 			Char = Player.CharacterAdded:Wait()
@@ -16,14 +44,13 @@ local function ForceMove(Target, Options)
 	local Hrp = Char:WaitForChild("HumanoidRootPart")
 	local Hum = Char:FindFirstChildOfClass("Humanoid")
 
-	local Speed = Options.Speed or 1250
 	if Speed < 0 then Speed = 0 end
-	local Reach = Options.ReachRadius or 5
-	local UseFlatXZ = Options.UseFlatXZ
+	local Reach = (type(Options) == "table" and Options.ReachRadius) or 5
+	local UseFlatXZ = type(Options) == "table" and Options.UseFlatXZ
 	if UseFlatXZ == nil then UseFlatXZ = true end
-	local BaseY = Options.BaseY
+	local BaseY = type(Options) == "table" and Options.BaseY
 	if UseFlatXZ and type(BaseY) ~= "number" then BaseY = Hrp.Position.Y end
-	local MaxYSpeed = Options.MaxYSpeed or 250
+	local MaxYSpeed = (type(Options) == "table" and Options.MaxYSpeed) or 250
 
 	local function GetGoal()
 		if typeof(Target) == "Vector3" then return Target end
@@ -72,15 +99,52 @@ local function ForceMove(Target, Options)
 	LV.Enabled = true
 	AO.Enabled = true
 
+	local NoClipOn = false
+	local PrevCollide = {}
+	local function SetNoClip(On)
+		if not Char or On == NoClipOn then return end
+		NoClipOn = On
+		if On then
+			PrevCollide = {}
+			for _, D in ipairs(Char:GetDescendants()) do
+				if D:IsA("BasePart") then
+					PrevCollide[D] = D.CanCollide
+					D.CanCollide = false
+				end
+			end
+		else
+			for P, V in pairs(PrevCollide) do
+				if P and P.Parent then
+					P.CanCollide = V
+				end
+			end
+			PrevCollide = {}
+		end
+	end
+
+	if UseNoClip then
+		SetNoClip(true)
+	end
+
+	local StartPos = Hrp.Position
+	local Returning = false
 	local Done = false
 	local Conn
 	local function Stop()
 		if Done then return end
 		Done = true
 		if Conn then Conn:Disconnect() end
+		if LV then LV.VectorVelocity = Vector3.zero end
+		if Hrp then
+			Hrp.AssemblyLinearVelocity = Vector3.zero
+			Hrp.AssemblyAngularVelocity = Vector3.zero
+		end
 		if LV then LV:Destroy() end
 		if AO then AO:Destroy() end
 		if Att then Att:Destroy() end
+		if UseNoClip then
+			SetNoClip(false)
+		end
 		if Hum then
 			Hum.PlatformStand = false
 			Hum.AutoRotate = true
@@ -93,7 +157,7 @@ local function ForceMove(Target, Options)
 			Stop()
 			return
 		end
-		local Goal = GetGoal()
+		local Goal = Returning and StartPos or GetGoal()
 		if not Goal then
 			Stop()
 			return
@@ -107,6 +171,18 @@ local function ForceMove(Target, Options)
 		local Dz = Goal.Z - Pos.Z
 		local DistXZ = math.sqrt(Dx * Dx + Dz * Dz)
 		if DistXZ <= Reach then
+			LV.VectorVelocity = Vector3.zero
+			Hrp.AssemblyLinearVelocity = Vector3.zero
+			Hrp.AssemblyAngularVelocity = Vector3.zero
+			if not Returning then
+				if Callback then
+					task.spawn(Callback)
+				end
+				if ReturnToStart then
+					Returning = true
+					return
+				end
+			end
 			Stop()
 			return
 		end
