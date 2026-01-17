@@ -1,7 +1,7 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
-local function CoolForceMove(Target, Options)
+local function ForceMove(Target, Options)
 	Options = Options or {}
 	local Player = Options.Player or Players.LocalPlayer
 	local Char = Options.Character or (Player and Player.Character)
@@ -137,4 +137,4 @@ local function CoolForceMove(Target, Options)
 	return Stop
 end
 
-return CoolForceMove
+return ForceMove
