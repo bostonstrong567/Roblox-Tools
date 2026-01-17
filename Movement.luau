@@ -1,27 +1,27 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
-local function ForceMove(SpeedArg, NoClipArg, TargetArg, CallbackArg, ReturnToStartArg, OptionsArg)
+local ActiveMoves = setmetatable({}, { __mode = "k" })
+
+local function ForceMove(TargetArg, SpeedArg, NoClipArg, CallbackArg, ReturnToStartArg, OptionsArg)
 	local Speed = 250
-  local UseNoClip = true
+	local UseNoClip = true
 	local Target = TargetArg
 	local Callback = CallbackArg
 	local ReturnToStart = ReturnToStartArg == true
 	local Options = OptionsArg or {}
 
-	if typeof(SpeedArg) == "Instance" or typeof(SpeedArg) == "Vector3" then
+	if typeof(TargetArg) ~= "Instance" and typeof(TargetArg) ~= "Vector3" then
 		Target = SpeedArg
-		Options = NoClipArg or {}
+		Speed = type(TargetArg) == "number" and TargetArg or Speed
+		UseNoClip = NoClipArg ~= false
+		Callback = CallbackArg
+		ReturnToStart = ReturnToStartArg == true
+		Options = OptionsArg or Options
 	else
-		Speed = type(SpeedArg) == "number" and SpeedArg
-		if typeof(NoClipArg) == "Instance" or typeof(NoClipArg) == "Vector3" then
-			Target = NoClipArg
-			Callback = TargetArg
-			ReturnToStart = CallbackArg == true
-			Options = ReturnToStartArg or Options
-		else
-			UseNoClip = NoClipArg ~= false
-		end
+		if type(SpeedArg) == "number" then Speed = SpeedArg end
+		if type(SpeedArg) == "table" then Options = SpeedArg end
+		if NoClipArg ~= nil then UseNoClip = NoClipArg ~= false end
 	end
 
 	if type(Options) == "table" then
@@ -43,6 +43,9 @@ local function ForceMove(SpeedArg, NoClipArg, TargetArg, CallbackArg, ReturnToSt
 
 	local Hrp = Char:WaitForChild("HumanoidRootPart")
 	local Hum = Char:FindFirstChildOfClass("Humanoid")
+
+	local Prev = ActiveMoves[Hrp]
+	if Prev then Prev() end
 
 	local function GetGoal()
 		if typeof(Target) == "Vector3" then return Target end
@@ -140,6 +143,9 @@ local function ForceMove(SpeedArg, NoClipArg, TargetArg, CallbackArg, ReturnToSt
 	local function Stop()
 		if Done then return end
 		Done = true
+		if ActiveMoves[Hrp] == Stop then
+			ActiveMoves[Hrp] = nil
+		end
 		if Conn then Conn:Disconnect() end
 		if LV then LV.VectorVelocity = Vector3.zero end
 		if Hrp then
@@ -158,6 +164,8 @@ local function ForceMove(SpeedArg, NoClipArg, TargetArg, CallbackArg, ReturnToSt
 		end
 	end
 
+	ActiveMoves[Hrp] = Stop
+
 	Conn = RunService.Heartbeat:Connect(function()
 		if Done then return end
 		if not Hrp or not Hrp.Parent then
@@ -175,9 +183,12 @@ local function ForceMove(SpeedArg, NoClipArg, TargetArg, CallbackArg, ReturnToSt
 
 		local Pos = Hrp.Position
 		local Dx = Goal.X - Pos.X
+		local Dy = Goal.Y - Pos.Y
 		local Dz = Goal.Z - Pos.Z
 		local DistXZ = math.sqrt(Dx * Dx + Dz * Dz)
-		if DistXZ <= Reach then
+		local Dist3 = math.sqrt(Dx * Dx + Dy * Dy + Dz * Dz)
+		local ReachDist = UseFlatXZ and DistXZ or Dist3
+		if ReachDist <= Reach then
 			LV.VectorVelocity = Vector3.zero
 			Hrp.AssemblyLinearVelocity = Vector3.zero
 			Hrp.AssemblyAngularVelocity = Vector3.zero
@@ -205,8 +216,6 @@ local function ForceMove(SpeedArg, NoClipArg, TargetArg, CallbackArg, ReturnToSt
 			local YErr = BaseY - Pos.Y
 			Vy = math.clamp(YErr * 14, -MaxYSpeed, MaxYSpeed)
 		else
-			local Dy = Goal.Y - Pos.Y
-			local Dist3 = math.sqrt(Dx * Dx + Dy * Dy + Dz * Dz)
 			if Dist3 > 1e-3 then
 				Vx = Dx / Dist3 * Speed
 				Vy = math.clamp((Dy / Dist3) * Speed, -MaxYSpeed, MaxYSpeed)
