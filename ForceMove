@@ -56,10 +56,6 @@ local function GetCharacterParts(Character)
 end
 
 local function SetCharacterNoClip(Character, On, PrevCollide)
-	if not Character then
-		return PrevCollide
-	end
-
 	if On then
 		local Parts, PartSet = GetCharacterParts(Character)
 		PrevCollide = PrevCollide or {}
@@ -152,47 +148,27 @@ local function GetOrCreateMover(Hrp)
 		Ao.Parent = Hrp
 	end
 
-	return Att, Lv, Ao
+	return Lv, Ao
 end
 
 local function ForceMove(Target, Options)
 	Options = Options or {}
 
-	local Speed = Options.Speed
-	if type(Speed) ~= "number" then
-		Speed = 250
-	elseif Speed < 0 then
-		Speed = 0
-	end
-
-	local ReachRadius = Options.ReachRadius
-	if type(ReachRadius) ~= "number" then
-		ReachRadius = 5
-	end
+	local Speed = Options.Speed or 250
+	local ReachRadius = Options.ReachRadius or 5
 	local ReachRadiusSq = ReachRadius * ReachRadius
-
 	local UseNoClip = Options.NoClip
-	if type(UseNoClip) ~= "boolean" then
-		UseNoClip = true
-	end
-
-	local MaxYSpeed = Options.MaxYSpeed
-	if type(MaxYSpeed) ~= "number" then
-		MaxYSpeed = 250
-	end
+	if UseNoClip == nil then UseNoClip = true end
 
 	local UseFlatXz = Options.UseFlatXZ
 	local BaseY = Options.BaseY
 	local ReturnToStart = Options.ReturnToStart == true
 
+	local MaxYSpeed = Options.MaxYSpeed or 250
+
 	local Callback = Options.Callback
 	if type(Callback) ~= "function" then
 		Callback = nil
-	end
-
-	local MaxTime = Options.MaxTime
-	if type(MaxTime) ~= "number" or MaxTime <= 0 then
-		MaxTime = nil
 	end
 
 	local Player = Options.Player or Players.LocalPlayer
@@ -221,7 +197,6 @@ local function ForceMove(Target, Options)
 	local StartPos = Hrp.Position
 	local Returning = false
 	local Done = false
-	local StartTime = os.clock()
 
 	if type(UseFlatXz) ~= "boolean" then
 		local GoalHint = GetGoal()
@@ -239,7 +214,7 @@ local function ForceMove(Target, Options)
 	local _, StartYaw, _ = Hrp.CFrame:ToOrientation()
 	local YawCFrame = CFrame.Angles(0, StartYaw, 0)
 
-	local _, Lv, Ao = GetOrCreateMover(Hrp)
+	local Lv, Ao = GetOrCreateMover(Hrp)
 
 	Hrp.AssemblyLinearVelocity = Vector3.zero
 	Hrp.AssemblyAngularVelocity = Vector3.zero
@@ -346,11 +321,6 @@ local function ForceMove(Target, Options)
 			return
 		end
 
-		if MaxTime and (os.clock() - StartTime) >= MaxTime then
-			Stop()
-			return
-		end
-
 		if not Hrp.Parent then
 			Stop()
 			return
@@ -407,11 +377,11 @@ local function ForceMove(Target, Options)
 			Vx = Dx * Inv
 			Vz = Dz * Inv
 
-			if not UseFlatXz then
-				Vy = Clamp(Dy * Inv, -MaxYSpeed, MaxYSpeed)
-			else
+			if UseFlatXz then
 				local YErr = BaseY - Pos.Y
 				Vy = Clamp(YErr * 14, -MaxYSpeed, MaxYSpeed)
+			else
+				Vy = Clamp(Dy * Inv, -MaxYSpeed, MaxYSpeed)
 			end
 		else
 			if UseFlatXz then
