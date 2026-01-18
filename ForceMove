@@ -27,11 +27,13 @@ local function GetCharacterParts(Character)
 		end
 	end)
 
-	local RemovingConn = Character.DescendantRemoving:Connect(function(Descendant)
-		if PartSet[Descendant] then
-			PartSet[Descendant] = nil
-		end
-	end)
+  local RemovingConn = Character.DescendantRemoving:Connect(function(Descendant)
+      if PartSet[Descendant] then
+          PartSet[Descendant] = nil
+          local idx = table.find(Parts, Descendant)
+          if idx then table.remove(Parts, idx) end
+      end
+  end)
 
 	local AncestryConn
 	AncestryConn = Character.AncestryChanged:Connect(function(_, Parent)
@@ -154,9 +156,10 @@ end
 local function ForceMove(Target, Options)
 	Options = Options or {}
 
-	local Speed = Options.Speed or 250
-	local ReachRadius = Options.ReachRadius or 5
-	local ReachRadiusSq = ReachRadius * ReachRadius
+	local Speed = Options.Speed
+	if type(Speed) ~= "number" then Speed = 250 end
+	if Speed < 0 then Speed = 0 end
+
 	local UseNoClip = Options.NoClip
 	if UseNoClip == nil then UseNoClip = true end
 
@@ -164,12 +167,11 @@ local function ForceMove(Target, Options)
 	local BaseY = Options.BaseY
 	local ReturnToStart = Options.ReturnToStart == true
 
-	local MaxYSpeed = Options.MaxYSpeed or 250
+	local MaxYSpeed = Options.MaxYSpeed
+	if type(MaxYSpeed) ~= "number" then MaxYSpeed = 250 end
 
 	local Callback = Options.Callback
-	if type(Callback) ~= "function" then
-		Callback = nil
-	end
+	if type(Callback) ~= "function" then Callback = nil end
 
 	local Player = Options.Player or Players.LocalPlayer
 	local Character = Options.Character or (Player and Player.Character)
@@ -316,7 +318,7 @@ local function ForceMove(Target, Options)
 
 	ActiveStops[Hrp] = Stop
 
-	Conn = RunService.PreSimulation:Connect(function()
+	Conn = RunService.PreSimulation:Connect(function(Dt)
 		if Done then
 			return
 		end
@@ -348,7 +350,15 @@ local function ForceMove(Target, Options)
 			DistSq = Dx * Dx + Dy * Dy + Dz * Dz
 		end
 
-		if DistSq <= ReachRadiusSq then
+		local SafeDt = Dt
+		if type(SafeDt) ~= "number" or SafeDt <= 0 then
+			SafeDt = 1 / 60
+		end
+		if SafeDt < 1 / 240 then
+			SafeDt = 1 / 240
+		end
+
+		if DistSq <= 1e-6 then
 			Lv.VectorVelocity = ZeroVector3
 
 			if Returning then
@@ -370,24 +380,50 @@ local function ForceMove(Target, Options)
 			return
 		end
 
-		local Vx, Vy, Vz = 0, 0, 0
+		local Dist = Sqrt(DistSq)
+		local MaxStep = Speed * SafeDt
 
-		if DistSq > 1e-8 then
-			local Inv = Speed / Sqrt(DistSq)
-			Vx = Dx * Inv
-			Vz = Dz * Inv
+		if Dist <= MaxStep then
+			Lv.VectorVelocity = ZeroVector3
+			Hrp.AssemblyLinearVelocity = ZeroVector3
+			Hrp.AssemblyAngularVelocity = ZeroVector3
 
-			if UseFlatXz then
-				local YErr = BaseY - Pos.Y
-				Vy = Clamp(YErr * 14, -MaxYSpeed, MaxYSpeed)
-			else
-				Vy = Clamp(Dy * Inv, -MaxYSpeed, MaxYSpeed)
+			if Returning then
+				Stop()
+				return
 			end
+
+			if Callback then
+				Spawn(Callback)
+			end
+
+			if ReturnToStart then
+				Returning = true
+				PrevVx, PrevVy, PrevVz = 0, 0, 0
+				return
+			end
+
+			Stop()
+			return
+		end
+
+		local MoveSpeed = Speed
+		local StepClamp = (Dist / SafeDt) * 0.98
+		if StepClamp < MoveSpeed then
+			MoveSpeed = StepClamp
+		end
+
+		local Inv = MoveSpeed / Dist
+
+		local Vx = Dx * Inv
+		local Vz = Dz * Inv
+		local Vy
+
+		if UseFlatXz then
+			local YErr = BaseY - Pos.Y
+			Vy = Clamp(YErr * 14, -MaxYSpeed, MaxYSpeed)
 		else
-			if UseFlatXz then
-				local YErr = BaseY - Pos.Y
-				Vy = Clamp(YErr * 14, -MaxYSpeed, MaxYSpeed)
-			end
+			Vy = Clamp(Dy * Inv, -MaxYSpeed, MaxYSpeed)
 		end
 
 		if Abs(Vx - PrevVx) > VelEps or Abs(Vy - PrevVy) > VelEps or Abs(Vz - PrevVz) > VelEps then
