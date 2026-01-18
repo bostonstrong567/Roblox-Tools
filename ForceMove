@@ -1,0 +1,432 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local ActiveStops = setmetatable({}, { __mode = "k" })
+local CharacterPartCache = setmetatable({}, { __mode = "k" })
+
+local function GetCharacterParts(Character)
+	local Record = CharacterPartCache[Character]
+	if Record then
+		return Record.Parts, Record.PartSet
+	end
+
+	local Parts = {}
+	local PartSet = {}
+
+	for _, Descendant in ipairs(Character:GetDescendants()) do
+		if Descendant:IsA("BasePart") then
+			PartSet[Descendant] = true
+			Parts[#Parts + 1] = Descendant
+		end
+	end
+
+	local AddedConn = Character.DescendantAdded:Connect(function(Descendant)
+		if Descendant:IsA("BasePart") and not PartSet[Descendant] then
+			PartSet[Descendant] = true
+			Parts[#Parts + 1] = Descendant
+		end
+	end)
+
+	local RemovingConn = Character.DescendantRemoving:Connect(function(Descendant)
+		if PartSet[Descendant] then
+			PartSet[Descendant] = nil
+		end
+	end)
+
+	local AncestryConn
+	AncestryConn = Character.AncestryChanged:Connect(function(_, Parent)
+		if Parent == nil then
+			if AddedConn then AddedConn:Disconnect() end
+			if RemovingConn then RemovingConn:Disconnect() end
+			if AncestryConn then AncestryConn:Disconnect() end
+			CharacterPartCache[Character] = nil
+		end
+	end)
+
+	Record = {
+		Parts = Parts,
+		PartSet = PartSet,
+		AddedConn = AddedConn,
+		RemovingConn = RemovingConn,
+		AncestryConn = AncestryConn,
+	}
+
+	CharacterPartCache[Character] = Record
+	return Parts, PartSet
+end
+
+local function SetCharacterNoClip(Character, On, PrevCollide)
+	if not Character then
+		return PrevCollide
+	end
+
+	if On then
+		local Parts, PartSet = GetCharacterParts(Character)
+		PrevCollide = PrevCollide or {}
+		for Index = 1, #Parts do
+			local Part = Parts[Index]
+			if PartSet[Part] and Part.Parent then
+				if PrevCollide[Part] == nil then
+					PrevCollide[Part] = Part.CanCollide
+				end
+				Part.CanCollide = false
+			end
+		end
+		return PrevCollide
+	end
+
+	if PrevCollide then
+		for Part, CanCollide in pairs(PrevCollide) do
+			if Part and Part.Parent then
+				Part.CanCollide = CanCollide
+			end
+		end
+	end
+	return nil
+end
+
+local function BuildGoalGetter(Target)
+	local TargetType = typeof(Target)
+
+	if TargetType == "Vector3" then
+		local Const = Target
+		return function()
+			return Const
+		end
+	end
+
+	if TargetType == "Instance" then
+		if Target:IsA("BasePart") then
+			local Part = Target
+			return function()
+				if Part.Parent then
+					return Part.Position
+				end
+				return nil
+			end
+		end
+
+		if Target:IsA("Model") then
+			local Model = Target
+			return function()
+				if Model.Parent then
+					return Model:GetPivot().Position
+				end
+				return nil
+			end
+		end
+	end
+
+	return nil
+end
+
+local function GetOrCreateMover(Hrp)
+	local Att = Hrp:FindFirstChild("CFM_Att")
+	if not Att then
+		Att = Instance.new("Attachment")
+		Att.Name = "CFM_Att"
+		Att.Parent = Hrp
+	end
+
+	local Lv = Hrp:FindFirstChild("CFM_LV")
+	if not Lv then
+		Lv = Instance.new("LinearVelocity")
+		Lv.Name = "CFM_LV"
+		Lv.Attachment0 = Att
+		Lv.RelativeTo = Enum.ActuatorRelativeTo.World
+		Lv.VelocityConstraintMode = Enum.VelocityConstraintMode.Vector
+		Lv.MaxForce = 1e9
+		Lv.Enabled = false
+		Lv.Parent = Hrp
+	end
+
+	local Ao = Hrp:FindFirstChild("CFM_AO")
+	if not Ao then
+		Ao = Instance.new("AlignOrientation")
+		Ao.Name = "CFM_AO"
+		Ao.Attachment0 = Att
+		Ao.Mode = Enum.OrientationAlignmentMode.OneAttachment
+		Ao.MaxTorque = 1e9
+		Ao.Responsiveness = 200
+		Ao.Enabled = false
+		Ao.Parent = Hrp
+	end
+
+	return Att, Lv, Ao
+end
+
+local function ForceMove(Target, Options)
+	Options = Options or {}
+
+	local Speed = Options.Speed
+	if type(Speed) ~= "number" then
+		Speed = 250
+	elseif Speed < 0 then
+		Speed = 0
+	end
+
+	local ReachRadius = Options.ReachRadius
+	if type(ReachRadius) ~= "number" then
+		ReachRadius = 5
+	end
+	local ReachRadiusSq = ReachRadius * ReachRadius
+
+	local UseNoClip = Options.NoClip
+	if type(UseNoClip) ~= "boolean" then
+		UseNoClip = true
+	end
+
+	local MaxYSpeed = Options.MaxYSpeed
+	if type(MaxYSpeed) ~= "number" then
+		MaxYSpeed = 250
+	end
+
+	local UseFlatXz = Options.UseFlatXZ
+	local BaseY = Options.BaseY
+	local ReturnToStart = Options.ReturnToStart == true
+
+	local Callback = Options.Callback
+	if type(Callback) ~= "function" then
+		Callback = nil
+	end
+
+	local MaxTime = Options.MaxTime
+	if type(MaxTime) ~= "number" or MaxTime <= 0 then
+		MaxTime = nil
+	end
+
+	local Player = Options.Player or Players.LocalPlayer
+	local Character = Options.Character or (Player and Player.Character)
+	if not Character then
+		return function() end
+	end
+
+	local Hrp = Character:FindFirstChild("HumanoidRootPart")
+	if not Hrp then
+		return function() end
+	end
+
+	local Humanoid = Character:FindFirstChildOfClass("Humanoid")
+
+	local PrevStop = ActiveStops[Hrp]
+	if PrevStop then
+		PrevStop()
+	end
+
+	local GetGoal = BuildGoalGetter(Target)
+	if not GetGoal then
+		return function() end
+	end
+
+	local StartPos = Hrp.Position
+	local Returning = false
+	local Done = false
+	local StartTime = os.clock()
+
+	if type(UseFlatXz) ~= "boolean" then
+		local GoalHint = GetGoal()
+		if GoalHint then
+			UseFlatXz = (math.abs(GoalHint.Y - StartPos.Y) <= 0.05)
+		else
+			UseFlatXz = true
+		end
+	end
+
+	if UseFlatXz and type(BaseY) ~= "number" then
+		BaseY = StartPos.Y
+	end
+
+	local _, StartYaw, _ = Hrp.CFrame:ToOrientation()
+	local YawCFrame = CFrame.Angles(0, StartYaw, 0)
+
+	local _, Lv, Ao = GetOrCreateMover(Hrp)
+
+	Hrp.AssemblyLinearVelocity = Vector3.zero
+	Hrp.AssemblyAngularVelocity = Vector3.zero
+
+	local PrevPlatformStand
+	local PrevAutoRotate
+	local ChangedPlatformStand = false
+	local ChangedAutoRotate = false
+
+	if Humanoid then
+		PrevPlatformStand = Humanoid.PlatformStand
+		PrevAutoRotate = Humanoid.AutoRotate
+
+		if PrevPlatformStand ~= true then
+			Humanoid.PlatformStand = true
+			ChangedPlatformStand = true
+		end
+
+		if PrevAutoRotate ~= false then
+			Humanoid.AutoRotate = false
+			ChangedAutoRotate = true
+		end
+	end
+
+	Lv.VectorVelocity = Vector3.zero
+	Lv.Enabled = true
+
+	Ao.CFrame = YawCFrame
+	Ao.Enabled = true
+
+	local PrevCollide = nil
+	local NoClipAddedConn = nil
+
+	if UseNoClip then
+		PrevCollide = SetCharacterNoClip(Character, true, PrevCollide)
+		NoClipAddedConn = Character.DescendantAdded:Connect(function(Descendant)
+			if Descendant:IsA("BasePart") then
+				PrevCollide = PrevCollide or {}
+				if PrevCollide[Descendant] == nil then
+					PrevCollide[Descendant] = Descendant.CanCollide
+				end
+				Descendant.CanCollide = false
+			end
+		end)
+	end
+
+	local Sqrt = math.sqrt
+	local Clamp = math.clamp
+	local NewVector3 = Vector3.new
+	local ZeroVector3 = Vector3.zero
+	local Spawn = task.spawn
+	local Abs = math.abs
+
+	local PrevVx, PrevVy, PrevVz = 0, 0, 0
+	local VelEps = 1e-3
+
+	local Conn
+
+	local function Stop()
+		if Done then
+			return
+		end
+		Done = true
+
+		if ActiveStops[Hrp] == Stop then
+			ActiveStops[Hrp] = nil
+		end
+
+		if Conn then
+			Conn:Disconnect()
+		end
+
+		if NoClipAddedConn then
+			NoClipAddedConn:Disconnect()
+		end
+
+		Lv.VectorVelocity = ZeroVector3
+		Lv.Enabled = false
+		Ao.Enabled = false
+
+		if Hrp and Hrp.Parent then
+			Hrp.AssemblyLinearVelocity = ZeroVector3
+			Hrp.AssemblyAngularVelocity = ZeroVector3
+		end
+
+		if UseNoClip then
+			PrevCollide = SetCharacterNoClip(Character, false, PrevCollide)
+		end
+
+		if Humanoid then
+			if ChangedPlatformStand then
+				Humanoid.PlatformStand = PrevPlatformStand
+			end
+			if ChangedAutoRotate then
+				Humanoid.AutoRotate = PrevAutoRotate
+			end
+		end
+	end
+
+	ActiveStops[Hrp] = Stop
+
+	Conn = RunService.PreSimulation:Connect(function()
+		if Done then
+			return
+		end
+
+		if MaxTime and (os.clock() - StartTime) >= MaxTime then
+			Stop()
+			return
+		end
+
+		if not Hrp.Parent then
+			Stop()
+			return
+		end
+
+		local Goal = Returning and StartPos or GetGoal()
+		if not Goal then
+			Stop()
+			return
+		end
+
+		if UseFlatXz then
+			Goal = NewVector3(Goal.X, BaseY, Goal.Z)
+		end
+
+		local Pos = Hrp.Position
+		local Dx = Goal.X - Pos.X
+		local Dy = Goal.Y - Pos.Y
+		local Dz = Goal.Z - Pos.Z
+
+		local DistSq
+		if UseFlatXz then
+			DistSq = Dx * Dx + Dz * Dz
+		else
+			DistSq = Dx * Dx + Dy * Dy + Dz * Dz
+		end
+
+		if DistSq <= ReachRadiusSq then
+			Lv.VectorVelocity = ZeroVector3
+
+			if Returning then
+				Stop()
+				return
+			end
+
+			if Callback then
+				Spawn(Callback)
+			end
+
+			if ReturnToStart then
+				Returning = true
+				PrevVx, PrevVy, PrevVz = 0, 0, 0
+				return
+			end
+
+			Stop()
+			return
+		end
+
+		local Vx, Vy, Vz = 0, 0, 0
+
+		if DistSq > 1e-8 then
+			local Inv = Speed / Sqrt(DistSq)
+			Vx = Dx * Inv
+			Vz = Dz * Inv
+
+			if not UseFlatXz then
+				Vy = Clamp(Dy * Inv, -MaxYSpeed, MaxYSpeed)
+			else
+				local YErr = BaseY - Pos.Y
+				Vy = Clamp(YErr * 14, -MaxYSpeed, MaxYSpeed)
+			end
+		else
+			if UseFlatXz then
+				local YErr = BaseY - Pos.Y
+				Vy = Clamp(YErr * 14, -MaxYSpeed, MaxYSpeed)
+			end
+		end
+
+		if Abs(Vx - PrevVx) > VelEps or Abs(Vy - PrevVy) > VelEps or Abs(Vz - PrevVz) > VelEps then
+			PrevVx, PrevVy, PrevVz = Vx, Vy, Vz
+			Lv.VectorVelocity = NewVector3(Vx, Vy, Vz)
+		end
+	end)
+
+	return Stop
+end
+
+return ForceMove
