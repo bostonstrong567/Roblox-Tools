@@ -1,5 +1,10 @@
-local runService = game:GetService("RunService")
+-- TaskManager — Unified Task Scheduling & Lifecycle
+-- Stored in getgenv().taskManager for persistence across bridge executions.
+-- Load once on first connection. All subsequent executions reference getgenv().taskManager.
 
+if getgenv().taskManager then return getgenv().taskManager end
+
+local runService = game:GetService("RunService")
 local assert = assert
 local type = type
 local typeof = typeof
@@ -17,25 +22,18 @@ local tableUnpack = table.unpack
 local tableClear = table.clear
 local tableSort = table.sort
 local pairs = pairs
-
 local taskManager = {}
-
 local tasksByName = {}
-
 local protectedCalls = true
 local maxQueuePerStep = math.huge
 local maxStepTime = 0
-
 local function defaultErrorHandler(kind, name, err)
 	warn(("taskManager %s '%s' error: %s"):format(tostring(kind), tostring(name), tostring(err)))
 end
-
 local errorHandler = defaultErrorHandler
-
 function taskManager.setProtectedCalls(enabled)
 	protectedCalls = enabled == true
 end
-
 function taskManager.setQueueLimits(maxPerStep, maxSeconds)
 	if maxPerStep ~= nil then
 		maxQueuePerStep = maxPerStep
@@ -44,23 +42,18 @@ function taskManager.setQueueLimits(maxPerStep, maxSeconds)
 		maxStepTime = maxSeconds
 	end
 end
-
 function taskManager.setErrorHandler(handler)
 	errorHandler = handler or defaultErrorHandler
 end
-
 local function assertName(name)
 	assert(type(name) == "string" and name ~= "", "name must be a non-empty string")
 end
-
 local function assertCallback(callback)
 	assert(type(callback) == "function", "callback must be a function")
 end
-
 local function assertSignal(signalLike)
 	assert(typeof(signalLike) == "RBXScriptSignal", "signalLike must be RBXScriptSignal")
 end
-
 local function setArgs(entry, ...)
 	local n = select("#", ...)
 	entry.argCount = n
@@ -69,7 +62,6 @@ local function setArgs(entry, ...)
 	entry.arg3 = nil
 	entry.arg4 = nil
 	entry.args = nil
-
 	if n == 0 then
 		return
 	end
@@ -89,10 +81,8 @@ local function setArgs(entry, ...)
 		entry.arg1, entry.arg2, entry.arg3, entry.arg4 = ...
 		return
 	end
-
 	entry.args = tablePack(...)
 end
-
 local function callNoEvent(entry)
 	local cb = entry.callback
 	local n = entry.argCount
@@ -111,7 +101,6 @@ local function callNoEvent(entry)
 		cb(tableUnpack(args, 1, args.n))
 	end
 end
-
 local function callEvent1(entry, a1)
 	local cb = entry.callback
 	local n = entry.argCount
@@ -130,7 +119,6 @@ local function callEvent1(entry, a1)
 		cb(a1, tableUnpack(args, 1, args.n))
 	end
 end
-
 local function callEvent2(entry, a1, a2)
 	local cb = entry.callback
 	local n = entry.argCount
@@ -149,18 +137,13 @@ local function callEvent2(entry, a1, a2)
 		cb(a1, a2, tableUnpack(args, 1, args.n))
 	end
 end
-
 local loops = {}
-
 local queueHead = nil
 local queueTail = nil
 local queueCount = 0
-
 local timerHeap = {}
 local timerCount = 0
-
 local schedulerNow = 0
-
 local function heapSwap(i, j)
 	local a = timerHeap[i]
 	local b = timerHeap[j]
@@ -169,7 +152,6 @@ local function heapSwap(i, j)
 	a.heapIndex = j
 	b.heapIndex = i
 end
-
 local function heapSiftUp(i)
 	while i > 1 do
 		local p = i // 2
@@ -180,7 +162,6 @@ local function heapSiftUp(i)
 		i = p
 	end
 end
-
 local function heapSiftDown(i)
 	local n = #timerHeap
 	while true do
@@ -200,14 +181,12 @@ local function heapSiftDown(i)
 		i = c
 	end
 end
-
 local function heapPush(entry)
 	local n = #timerHeap + 1
 	timerHeap[n] = entry
 	entry.heapIndex = n
 	heapSiftUp(n)
 end
-
 local function heapPop()
 	local n = #timerHeap
 	if n == 0 then
@@ -224,7 +203,6 @@ local function heapPop()
 	root.heapIndex = nil
 	return root
 end
-
 local function heapRemove(entry)
 	local index = entry.heapIndex
 	if not index then
@@ -246,7 +224,6 @@ local function heapRemove(entry)
 	entry.heapIndex = nil
 	return true
 end
-
 local function rebuildLoopOrder(loop)
 	tableClear(loop.priorityOrder)
 	for priority in pairs(loop.buckets) do
@@ -255,15 +232,12 @@ local function rebuildLoopOrder(loop)
 	tableSort(loop.priorityOrder)
 	loop.dirty = false
 end
-
 local function runLoopEvent1(loop, a1)
 	if loop.dirty then
 		rebuildLoopOrder(loop)
 	end
-
 	local buckets = loop.buckets
 	local order = loop.priorityOrder
-
 	for o = 1, #order do
 		local priority = order[o]
 		local bucket = buckets[priority]
@@ -290,15 +264,12 @@ local function runLoopEvent1(loop, a1)
 		end
 	end
 end
-
 local function runLoopEvent2(loop, a1, a2)
 	if loop.dirty then
 		rebuildLoopOrder(loop)
 	end
-
 	local buckets = loop.buckets
 	local order = loop.priorityOrder
-
 	for o = 1, #order do
 		local priority = order[o]
 		local bucket = buckets[priority]
@@ -325,7 +296,6 @@ local function runLoopEvent2(loop, a1, a2)
 		end
 	end
 end
-
 local function maybeDisconnectHeartbeat()
 	local loop = loops.heartbeat
 	if not loop then
@@ -336,7 +306,6 @@ local function maybeDisconnectHeartbeat()
 		loop.connection = nil
 	end
 end
-
 local function maybeDisconnectLoop(loop)
 	if loop.name == "heartbeat" then
 		return
@@ -346,16 +315,13 @@ local function maybeDisconnectLoop(loop)
 		loop.connection = nil
 	end
 end
-
 local function ensureLoop(stepName)
 	local loop = loops[stepName]
 	if loop then
 		return loop
 	end
-
 	local signal
 	local eventArity = 1
-
 	if stepName == "heartbeat" then
 		signal = runService.Heartbeat
 	elseif stepName == "preSimulation" then
@@ -374,7 +340,6 @@ local function ensureLoop(stepName)
 	else
 		error(("unknown stepName: %s"):format(tostring(stepName)))
 	end
-
 	loop = {
 		name = stepName,
 		signal = signal,
@@ -385,37 +350,29 @@ local function ensureLoop(stepName)
 		dirty = false,
 		repeatCount = 0
 	}
-
 	loops[stepName] = loop
 	return loop
 end
-
 local function ensureLoopConnection(loop)
 	if loop.connection then
 		return
 	end
-
 	if loop.name == "preRender" or loop.name == "renderStepped" then
 		assert(runService:IsClient(), loop.name .. " is client-only")
 	end
-
 	if loop.name == "heartbeat" then
 		loop.connection = loop.signal:Connect(function(dt)
 			schedulerNow = osClock()
-
 			while true do
 				local top = timerHeap[1]
 				if not top or top.dueTime > schedulerNow then
 					break
 				end
-
 				local timerEntry = heapPop()
 				timerCount -= 1
-
 				if timerEntry.name and tasksByName[timerEntry.name] == timerEntry then
 					tasksByName[timerEntry.name] = nil
 				end
-
 				if timerEntry.active ~= false then
 					if protectedCalls then
 						local ok, err = pcall(callNoEvent, timerEntry)
@@ -427,10 +384,8 @@ local function ensureLoopConnection(loop)
 					end
 				end
 			end
-
 			local processed = 0
 			local start = schedulerNow
-
 			while queueHead and processed < maxQueuePerStep do
 				local entry = queueHead
 				queueHead = entry.next
@@ -439,16 +394,12 @@ local function ensureLoopConnection(loop)
 				else
 					queueTail = nil
 				end
-
 				entry.next = nil
 				entry.prev = nil
-
 				queueCount -= 1
-
 				if entry.name and tasksByName[entry.name] == entry then
 					tasksByName[entry.name] = nil
 				end
-
 				if entry.active ~= false then
 					if protectedCalls then
 						local ok, err = pcall(callNoEvent, entry)
@@ -459,21 +410,16 @@ local function ensureLoopConnection(loop)
 						callNoEvent(entry)
 					end
 				end
-
 				processed += 1
-
 				if maxStepTime > 0 and (osClock() - start) >= maxStepTime then
 					break
 				end
 			end
-
 			runLoopEvent1(loop, dt)
 			maybeDisconnectHeartbeat()
 		end)
-
 		return
 	end
-
 	if loop.eventArity == 2 then
 		loop.connection = loop.signal:Connect(function(a1, a2)
 			runLoopEvent2(loop, a1, a2)
@@ -486,27 +432,22 @@ local function ensureLoopConnection(loop)
 		end)
 	end
 end
-
 local function removeFromQueue(entry)
 	local prev = entry.prev
 	local nextEntry = entry.next
-
 	if prev then
 		prev.next = nextEntry
 	else
 		queueHead = nextEntry
 	end
-
 	if nextEntry then
 		nextEntry.prev = prev
 	else
 		queueTail = prev
 	end
-
 	entry.prev = nil
 	entry.next = nil
 end
-
 local function removeFromBucket(entry)
 	local loop = entry.loop
 	local buckets = loop.buckets
@@ -514,38 +455,29 @@ local function removeFromBucket(entry)
 	if not bucket then
 		return
 	end
-
 	local index = entry.bucketIndex
 	if not index then
 		return
 	end
-
 	local lastIndex = #bucket
 	local lastEntry = bucket[lastIndex]
 	bucket[lastIndex] = nil
-
 	if index < lastIndex then
 		bucket[index] = lastEntry
 		lastEntry.bucketIndex = index
 	end
-
 	entry.bucketIndex = nil
-
 	if #bucket == 0 then
 		buckets[entry.priority] = nil
 		loop.dirty = true
 	end
 end
-
 local function stopInternal(name, entry)
 	if not entry or entry.active == false then
 		return
 	end
-
 	entry.active = false
-
 	local kind = entry.kind
-
 	if kind == "repeat" then
 		removeFromBucket(entry)
 		local loop = entry.loop
@@ -560,7 +492,6 @@ local function stopInternal(name, entry)
 		end
 		return
 	end
-
 	if kind == "queue" then
 		removeFromQueue(entry)
 		queueCount -= 1
@@ -570,7 +501,6 @@ local function stopInternal(name, entry)
 		maybeDisconnectHeartbeat()
 		return
 	end
-
 	if kind == "timer" then
 		if heapRemove(entry) then
 			timerCount -= 1
@@ -581,7 +511,6 @@ local function stopInternal(name, entry)
 		maybeDisconnectHeartbeat()
 		return
 	end
-
 	if kind == "connection" then
 		if entry.connection then
 			entry.connection:Disconnect()
@@ -592,7 +521,6 @@ local function stopInternal(name, entry)
 		end
 		return
 	end
-
 	if kind == "renderBind" then
 		runService:UnbindFromRenderStep(entry.bindName)
 		if tasksByName[name] == entry then
@@ -600,7 +528,6 @@ local function stopInternal(name, entry)
 		end
 		return
 	end
-
 	if kind == "thread" then
 		entry.cancelled = true
 		if tasksByName[name] == entry then
@@ -608,7 +535,6 @@ local function stopInternal(name, entry)
 		end
 		return
 	end
-
 	if kind == "signalWait" then
 		if entry.connection then
 			entry.connection:Disconnect()
@@ -624,19 +550,35 @@ local function stopInternal(name, entry)
 		maybeDisconnectHeartbeat()
 		return
 	end
-
+	-- Executor extensions: hook / hookMeta
+	if kind == "hook" then
+		if entry.original and entry.target then
+			pcall(hookfunction, entry.target, entry.original)
+		end
+		if tasksByName[name] == entry then
+			tasksByName[name] = nil
+		end
+		return
+	end
+	if kind == "hookMeta" then
+		if entry.original and entry.object and entry.metamethod then
+			pcall(hookmetamethod, entry.object, entry.metamethod, entry.original)
+		end
+		if tasksByName[name] == entry then
+			tasksByName[name] = nil
+		end
+		return
+	end
 	if tasksByName[name] == entry then
 		tasksByName[name] = nil
 	end
 end
-
 function taskManager.stop(name)
 	local entry = tasksByName[name]
 	if entry then
 		stopInternal(name, entry)
 	end
 end
-
 function taskManager.stopAll()
 	local names = {}
 	for name in pairs(tasksByName) do
@@ -650,31 +592,25 @@ function taskManager.stopAll()
 		end
 	end
 end
-
 function taskManager.exists(name)
 	return tasksByName[name] ~= nil
 end
-
 function taskManager.signal(name, signalLike, callback, ...)
 	assertName(name)
 	assertSignal(signalLike)
 	assertCallback(callback)
-
 	taskManager.stop(name)
-
 	local extraCount = select("#", ...)
 	local extraArgs = nil
 	if extraCount > 0 then
 		extraArgs = tablePack(...)
 	end
-
 	local entry = {
 		kind = "connection",
 		name = name,
 		connection = nil,
 		active = true
 	}
-
 	entry.connection = signalLike:Connect(function(...)
 		if entry.active == false then
 			return
@@ -697,31 +633,25 @@ function taskManager.signal(name, signalLike, callback, ...)
 			end
 		end
 	end)
-
 	tasksByName[name] = entry
 	return entry
 end
-
 function taskManager.once(name, signalLike, callback, ...)
 	assertName(name)
 	assertSignal(signalLike)
 	assertCallback(callback)
-
 	taskManager.stop(name)
-
 	local extraCount = select("#", ...)
 	local extraArgs = nil
 	if extraCount > 0 then
 		extraArgs = tablePack(...)
 	end
-
 	local entry = {
 		kind = "connection",
 		name = name,
 		connection = nil,
 		active = true
 	}
-
 	entry.connection = signalLike:Connect(function(...)
 		if entry.active == false then
 			return
@@ -745,25 +675,20 @@ function taskManager.once(name, signalLike, callback, ...)
 			end
 		end
 	end)
-
 	tasksByName[name] = entry
 	return entry
 end
-
 function taskManager.onceTimeout(name, signalLike, timeoutSeconds, callback, timeoutCallback, ...)
 	assertName(name)
 	assertSignal(signalLike)
 	assert(type(timeoutSeconds) == "number", "timeoutSeconds must be number")
 	assertCallback(callback)
-
 	taskManager.stop(name)
-
 	local extraCount = select("#", ...)
 	local extraArgs = nil
 	if extraCount > 0 then
 		extraArgs = tablePack(...)
 	end
-
 	local entry = {
 		kind = "signalWait",
 		name = name,
@@ -771,7 +696,6 @@ function taskManager.onceTimeout(name, signalLike, timeoutSeconds, callback, tim
 		timerEntry = nil,
 		active = true
 	}
-
 	local function onTimeout()
 		if entry.active == false then
 			return
@@ -788,7 +712,6 @@ function taskManager.onceTimeout(name, signalLike, timeoutSeconds, callback, tim
 			end
 		end
 	end
-
 	local timerEntry = {
 		kind = "timerInternal",
 		name = nil,
@@ -797,13 +720,10 @@ function taskManager.onceTimeout(name, signalLike, timeoutSeconds, callback, tim
 		dueTime = osClock() + timeoutSeconds,
 		argCount = 0
 	}
-
 	entry.timerEntry = timerEntry
 	timerCount += 1
 	heapPush(timerEntry)
-
 	ensureLoopConnection(ensureLoop("heartbeat"))
-
 	entry.connection = signalLike:Connect(function(...)
 		if entry.active == false then
 			return
@@ -827,28 +747,22 @@ function taskManager.onceTimeout(name, signalLike, timeoutSeconds, callback, tim
 			end
 		end
 	end)
-
 	tasksByName[name] = entry
 	return entry
 end
-
 local function registerLoopTask(stepName, name, priorityLevel, callback, ...)
 	assertName(name)
 	assertCallback(callback)
 	assert(type(priorityLevel) == "number", "priorityLevel must be number")
-
 	taskManager.stop(name)
-
 	local loop = ensureLoop(stepName)
 	ensureLoopConnection(loop)
-
 	local bucket = loop.buckets[priorityLevel]
 	if not bucket then
 		bucket = {}
 		loop.buckets[priorityLevel] = bucket
 		loop.dirty = true
 	end
-
 	local entry = {
 		kind = "repeat",
 		name = name,
@@ -858,59 +772,44 @@ local function registerLoopTask(stepName, name, priorityLevel, callback, ...)
 		bucketIndex = nil,
 		active = true
 	}
-
 	setArgs(entry, ...)
-
 	local index = #bucket + 1
 	bucket[index] = entry
 	entry.bucketIndex = index
-
 	loop.repeatCount += 1
-
 	tasksByName[name] = entry
 	return entry
 end
-
 function taskManager.priority(name, priorityLevel, callback, ...)
 	return registerLoopTask("heartbeat", name, priorityLevel, callback, ...)
 end
-
 function taskManager.heartbeat(name, callback, ...)
 	return registerLoopTask("heartbeat", name, 0, callback, ...)
 end
-
 function taskManager.preSimulation(name, priorityLevel, callback, ...)
 	return registerLoopTask("preSimulation", name, priorityLevel, callback, ...)
 end
-
 function taskManager.postSimulation(name, priorityLevel, callback, ...)
 	return registerLoopTask("postSimulation", name, priorityLevel, callback, ...)
 end
-
 function taskManager.preAnimation(name, priorityLevel, callback, ...)
 	return registerLoopTask("preAnimation", name, priorityLevel, callback, ...)
 end
-
 function taskManager.preRender(name, priorityLevel, callback, ...)
 	return registerLoopTask("preRender", name, priorityLevel, callback, ...)
 end
-
 function taskManager.renderStepped(name, priorityLevel, callback, ...)
 	return registerLoopTask("renderStepped", name, priorityLevel, callback, ...)
 end
-
 function taskManager.stepped(name, priorityLevel, callback, ...)
 	return registerLoopTask("stepped", name, priorityLevel, callback, ...)
 end
-
 function taskManager.bindToRenderStep(name, renderPriority, callback, ...)
 	assertName(name)
 	assertCallback(callback)
 	assert(type(renderPriority) == "number", "renderPriority must be number")
 	assert(runService:IsClient(), "bindToRenderStep is client-only")
-
 	taskManager.stop(name)
-
 	local entry = {
 		kind = "renderBind",
 		name = name,
@@ -918,9 +817,7 @@ function taskManager.bindToRenderStep(name, renderPriority, callback, ...)
 		callback = callback,
 		active = true
 	}
-
 	setArgs(entry, ...)
-
 	runService:BindToRenderStep(name, renderPriority, function(dt)
 		if entry.active == false then
 			return
@@ -934,17 +831,13 @@ function taskManager.bindToRenderStep(name, renderPriority, callback, ...)
 			callEvent1(entry, dt)
 		end
 	end)
-
 	tasksByName[name] = entry
 	return entry
 end
-
 function taskManager.queue(name, callback, ...)
 	assertName(name)
 	assertCallback(callback)
-
 	taskManager.stop(name)
-
 	local entry = {
 		kind = "queue",
 		name = name,
@@ -953,9 +846,7 @@ function taskManager.queue(name, callback, ...)
 		next = nil,
 		active = true
 	}
-
 	setArgs(entry, ...)
-
 	if queueTail then
 		queueTail.next = entry
 		entry.prev = queueTail
@@ -964,21 +855,16 @@ function taskManager.queue(name, callback, ...)
 		queueHead = entry
 		queueTail = entry
 	end
-
 	queueCount += 1
 	tasksByName[name] = entry
-
 	ensureLoopConnection(ensureLoop("heartbeat"))
 	return entry
 end
-
 function taskManager.delay(name, seconds, callback, ...)
 	assertName(name)
 	assert(type(seconds) == "number", "seconds must be number")
 	assertCallback(callback)
-
 	taskManager.stop(name)
-
 	local entry = {
 		kind = "timer",
 		name = name,
@@ -986,23 +872,17 @@ function taskManager.delay(name, seconds, callback, ...)
 		callback = callback,
 		active = true
 	}
-
 	setArgs(entry, ...)
-
 	timerCount += 1
 	heapPush(entry)
-
 	tasksByName[name] = entry
 	ensureLoopConnection(ensureLoop("heartbeat"))
 	return entry
 end
-
 function taskManager.defer(name, callback, ...)
 	assertName(name)
 	assertCallback(callback)
-
 	taskManager.stop(name)
-
 	local entry = {
 		kind = "thread",
 		name = name,
@@ -1010,9 +890,7 @@ function taskManager.defer(name, callback, ...)
 		cancelled = false,
 		active = true
 	}
-
 	setArgs(entry, ...)
-
 	local thread
 	thread = taskDefer(function()
 		if entry.cancelled then
@@ -1031,12 +909,10 @@ function taskManager.defer(name, callback, ...)
 			callNoEvent(entry)
 		end
 	end)
-
 	entry.thread = thread
 	tasksByName[name] = entry
 	return entry
 end
-
 function taskManager.condition(name, predicate, timeoutSeconds, callback)
 	assertName(name)
 	assertCallback(predicate)
@@ -1044,14 +920,11 @@ function taskManager.condition(name, predicate, timeoutSeconds, callback)
 		assert(type(timeoutSeconds) == "number", "timeoutSeconds must be number or nil")
 	end
 	assertCallback(callback)
-
 	taskManager.stop(name)
-
 	local dueTime = nil
 	if timeoutSeconds ~= nil and timeoutSeconds > 0 then
 		dueTime = osClock() + timeoutSeconds
 	end
-
 	local entry
 	entry = taskManager.priority(name, 0, function()
 		if dueTime and schedulerNow >= dueTime then
@@ -1059,7 +932,6 @@ function taskManager.condition(name, predicate, timeoutSeconds, callback)
 			callback(false)
 			return
 		end
-
 		local ok, result
 		if protectedCalls then
 			ok, result = pcall(predicate)
@@ -1071,25 +943,20 @@ function taskManager.condition(name, predicate, timeoutSeconds, callback)
 		else
 			result = predicate()
 		end
-
 		if result then
 			taskManager.stop(name)
 			callback(true)
 		end
 	end)
-
 	return entry
 end
-
 function taskManager.sleep(seconds)
 	assert(type(seconds) == "number", "seconds must be number")
 	local thread = coroutineRunning()
 	if not thread then
 		error("sleep must be called from a coroutine")
 	end
-
 	local resumed = false
-
 	local timerEntry = {
 		kind = "timerInternal",
 		name = nil,
@@ -1107,28 +974,23 @@ function taskManager.sleep(seconds)
 		active = true,
 		argCount = 0
 	}
-
 	timerCount += 1
 	heapPush(timerEntry)
 	ensureLoopConnection(ensureLoop("heartbeat"))
 	coroutineYield()
 end
-
 function taskManager.awaitSignal(signalLike, timeoutSeconds)
 	assertSignal(signalLike)
 	if timeoutSeconds ~= nil then
 		assert(type(timeoutSeconds) == "number", "timeoutSeconds must be number or nil")
 	end
-
 	local thread = coroutineRunning()
 	if not thread then
 		error("awaitSignal must be called from a coroutine")
 	end
-
 	local done = false
 	local connection = nil
 	local timerEntry = nil
-
 	local function finish(success, ...)
 		if done then
 			return
@@ -1147,11 +1009,9 @@ function taskManager.awaitSignal(signalLike, timeoutSeconds)
 			errorHandler("awaitSignal", "coroutine", err)
 		end
 	end
-
 	connection = signalLike:Connect(function(...)
 		finish(true, ...)
 	end)
-
 	if timeoutSeconds and timeoutSeconds > 0 then
 		timerEntry = {
 			kind = "timerInternal",
@@ -1167,8 +1027,69 @@ function taskManager.awaitSignal(signalLike, timeoutSeconds)
 		heapPush(timerEntry)
 		ensureLoopConnection(ensureLoop("heartbeat"))
 	end
-
 	return coroutineYield()
 end
 
+-- ============================================================
+-- Executor Extensions
+-- ============================================================
+
+-- Named hookfunction — auto-restores original on stop()
+function taskManager.Hook(name, targetFunction, replacementFunction)
+	assertName(name)
+	taskManager.stop(name)
+	local original = hookfunction(targetFunction, newcclosure(replacementFunction))
+	local entry = {
+		kind = "hook",
+		name = name,
+		original = original,
+		target = targetFunction,
+		active = true,
+	}
+	tasksByName[name] = entry
+	return original, entry
+end
+
+-- Named hookmetamethod — auto-restores original on stop()
+function taskManager.HookMetamethod(name, object, metamethod, handler)
+	assertName(name)
+	taskManager.stop(name)
+	local original = hookmetamethod(object, metamethod, newcclosure(handler))
+	local entry = {
+		kind = "hookMeta",
+		name = name,
+		original = original,
+		object = object,
+		metamethod = metamethod,
+		active = true,
+	}
+	tasksByName[name] = entry
+	return original, entry
+end
+
+-- Stop all tasks with names starting with a prefix + clear Drawing cache
+function taskManager.ClearDrawings(prefix)
+	for name in pairs(tasksByName) do
+		if name:sub(1, #prefix) == prefix then
+			taskManager.stop(name)
+		end
+	end
+	cleardrawcache()
+end
+
+-- List all active task names (for debugging)
+function taskManager.ListActive()
+	local names = {}
+	for name, entry in pairs(tasksByName) do
+		if entry.active ~= false then
+			table.insert(names, name .. " [" .. entry.kind .. "]")
+		end
+	end
+	return names
+end
+
+-- ============================================================
+
+getgenv().taskManager = taskManager
+print("[taskManager] Loaded and stored in getgenv().taskManager")
 return taskManager
