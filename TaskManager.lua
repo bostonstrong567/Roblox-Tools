@@ -1,7 +1,3 @@
--- TaskManager — Unified Task Scheduling & Lifecycle
--- Stored in getgenv().taskManager for persistence across bridge executions.
--- Load once on first connection. All subsequent executions reference getgenv().taskManager.
-
 if getgenv().taskManager then return getgenv().taskManager end
 
 local runService = game:GetService("RunService")
@@ -17,6 +13,8 @@ local coroutineRunning = coroutine.running
 local coroutineYield = coroutine.yield
 local coroutineResume = coroutine.resume
 local taskDefer = task.defer
+local taskSpawn = task.spawn
+local taskWait = task.wait
 local tablePack = table.pack
 local tableUnpack = table.unpack
 local tableClear = table.clear
@@ -535,6 +533,12 @@ local function stopInternal(name, entry)
 		end
 		return
 	end
+	if kind == "loop" then
+		if tasksByName[name] == entry then
+			tasksByName[name] = nil
+		end
+		return
+	end
 	if kind == "signalWait" then
 		if entry.connection then
 			entry.connection:Disconnect()
@@ -550,7 +554,6 @@ local function stopInternal(name, entry)
 		maybeDisconnectHeartbeat()
 		return
 	end
-	-- Executor extensions: hook / hookMeta
 	if kind == "hook" then
 		if entry.original and entry.target then
 			pcall(hookfunction, entry.target, entry.original)
@@ -913,6 +916,38 @@ function taskManager.defer(name, callback, ...)
 	tasksByName[name] = entry
 	return entry
 end
+function taskManager.loop(name, interval, callback)
+	assertName(name)
+	assert(type(interval) == "number", "interval must be a number")
+	assertCallback(callback)
+	taskManager.stop(name)
+	local entry = {
+		kind = "loop",
+		name = name,
+		callback = callback,
+		active = true,
+	}
+	tasksByName[name] = entry
+	taskSpawn(function()
+		while entry.active do
+			if protectedCalls then
+				local ok, err = pcall(callback)
+				if not ok then
+					errorHandler("loop", name, err)
+				end
+			else
+				callback()
+			end
+			if not entry.active then break end
+			if interval > 0 then
+				taskWait(interval)
+			else
+				taskWait()
+			end
+		end
+	end)
+	return entry
+end
 function taskManager.condition(name, predicate, timeoutSeconds, callback)
 	assertName(name)
 	assertCallback(predicate)
@@ -1030,11 +1065,6 @@ function taskManager.awaitSignal(signalLike, timeoutSeconds)
 	return coroutineYield()
 end
 
--- ============================================================
--- Executor Extensions
--- ============================================================
-
--- Named hookfunction — auto-restores original on stop()
 function taskManager.Hook(name, targetFunction, replacementFunction)
 	assertName(name)
 	taskManager.stop(name)
@@ -1050,7 +1080,6 @@ function taskManager.Hook(name, targetFunction, replacementFunction)
 	return original, entry
 end
 
--- Named hookmetamethod — auto-restores original on stop()
 function taskManager.HookMetamethod(name, object, metamethod, handler)
 	assertName(name)
 	taskManager.stop(name)
@@ -1067,7 +1096,6 @@ function taskManager.HookMetamethod(name, object, metamethod, handler)
 	return original, entry
 end
 
--- Stop all tasks with names starting with a prefix + clear Drawing cache
 function taskManager.ClearDrawings(prefix)
 	for name in pairs(tasksByName) do
 		if name:sub(1, #prefix) == prefix then
@@ -1077,7 +1105,6 @@ function taskManager.ClearDrawings(prefix)
 	cleardrawcache()
 end
 
--- List all active task names (for debugging)
 function taskManager.ListActive()
 	local names = {}
 	for name, entry in pairs(tasksByName) do
@@ -1088,8 +1115,5 @@ function taskManager.ListActive()
 	return names
 end
 
--- ============================================================
-
 getgenv().taskManager = taskManager
-print("[taskManager] Loaded and stored in getgenv().taskManager")
 return taskManager
