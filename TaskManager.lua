@@ -20,19 +20,19 @@ local tableUnpack = table.unpack
 local tableClear = table.clear
 local tableSort = table.sort
 local pairs = pairs
-local taskManager = {}
+local TaskManager = {}
 local tasksByName = {}
 local protectedCalls = true
 local maxQueuePerStep = math.huge
 local maxStepTime = 0
 local function defaultErrorHandler(kind, name, err)
-	warn(("taskManager %s '%s' error: %s"):format(tostring(kind), tostring(name), tostring(err)))
+	warn(("TaskManager %s '%s' error: %s"):format(tostring(kind), tostring(name), tostring(err)))
 end
 local errorHandler = defaultErrorHandler
-function taskManager.setProtectedCalls(enabled)
+function TaskManager.SetProtectedCalls(enabled)
 	protectedCalls = enabled == true
 end
-function taskManager.setQueueLimits(maxPerStep, maxSeconds)
+function TaskManager.SetQueueLimits(maxPerStep, maxSeconds)
 	if maxPerStep ~= nil then
 		maxQueuePerStep = maxPerStep
 	end
@@ -40,7 +40,7 @@ function taskManager.setQueueLimits(maxPerStep, maxSeconds)
 		maxStepTime = maxSeconds
 	end
 end
-function taskManager.setErrorHandler(handler)
+function TaskManager.SetErrorHandler(handler)
 	errorHandler = handler or defaultErrorHandler
 end
 local function assertName(name)
@@ -576,13 +576,13 @@ local function stopInternal(name, entry)
 		tasksByName[name] = nil
 	end
 end
-function taskManager.stop(name)
+function TaskManager.Stop(name)
 	local entry = tasksByName[name]
 	if entry then
 		stopInternal(name, entry)
 	end
 end
-function taskManager.stopAll()
+function TaskManager.StopAll()
 	local names = {}
 	for name in pairs(tasksByName) do
 		names[#names + 1] = name
@@ -595,14 +595,31 @@ function taskManager.stopAll()
 		end
 	end
 end
-function taskManager.exists(name)
+function TaskManager.StopPattern(prefix)
+	assert(type(prefix) == "string" and prefix ~= "", "prefix must be a non-empty string")
+	local prefixLen = #prefix
+	local names = {}
+	for name in pairs(tasksByName) do
+		if name:sub(1, prefixLen) == prefix then
+			names[#names + 1] = name
+		end
+	end
+	for i = 1, #names do
+		local name = names[i]
+		local entry = tasksByName[name]
+		if entry then
+			stopInternal(name, entry)
+		end
+	end
+end
+function TaskManager.Exists(name)
 	return tasksByName[name] ~= nil
 end
-function taskManager.signal(name, signalLike, callback, ...)
+function TaskManager.Signal(name, signalLike, callback, ...)
 	assertName(name)
 	assertSignal(signalLike)
 	assertCallback(callback)
-	taskManager.stop(name)
+	TaskManager.Stop(name)
 	local extraCount = select("#", ...)
 	local extraArgs = nil
 	if extraCount > 0 then
@@ -626,7 +643,7 @@ function taskManager.signal(name, signalLike, callback, ...)
 				ok, err = pcall(callback, ...)
 			end
 			if not ok then
-				errorHandler("signal", name, err)
+				errorHandler("Signal", name, err)
 			end
 		else
 			if extraArgs then
@@ -639,11 +656,11 @@ function taskManager.signal(name, signalLike, callback, ...)
 	tasksByName[name] = entry
 	return entry
 end
-function taskManager.once(name, signalLike, callback, ...)
+function TaskManager.Once(name, signalLike, callback, ...)
 	assertName(name)
 	assertSignal(signalLike)
 	assertCallback(callback)
-	taskManager.stop(name)
+	TaskManager.Stop(name)
 	local extraCount = select("#", ...)
 	local extraArgs = nil
 	if extraCount > 0 then
@@ -659,7 +676,7 @@ function taskManager.once(name, signalLike, callback, ...)
 		if entry.active == false then
 			return
 		end
-		taskManager.stop(name)
+		TaskManager.Stop(name)
 		if protectedCalls then
 			local ok, err
 			if extraArgs then
@@ -668,7 +685,7 @@ function taskManager.once(name, signalLike, callback, ...)
 				ok, err = pcall(callback, ...)
 			end
 			if not ok then
-				errorHandler("once", name, err)
+				errorHandler("Once", name, err)
 			end
 		else
 			if extraArgs then
@@ -681,12 +698,12 @@ function taskManager.once(name, signalLike, callback, ...)
 	tasksByName[name] = entry
 	return entry
 end
-function taskManager.onceTimeout(name, signalLike, timeoutSeconds, callback, timeoutCallback, ...)
+function TaskManager.OnceTimeout(name, signalLike, timeoutSeconds, callback, timeoutCallback, ...)
 	assertName(name)
 	assertSignal(signalLike)
 	assert(type(timeoutSeconds) == "number", "timeoutSeconds must be number")
 	assertCallback(callback)
-	taskManager.stop(name)
+	TaskManager.Stop(name)
 	local extraCount = select("#", ...)
 	local extraArgs = nil
 	if extraCount > 0 then
@@ -703,12 +720,12 @@ function taskManager.onceTimeout(name, signalLike, timeoutSeconds, callback, tim
 		if entry.active == false then
 			return
 		end
-		taskManager.stop(name)
+		TaskManager.Stop(name)
 		if timeoutCallback then
 			if protectedCalls then
 				local ok, err = pcall(timeoutCallback)
 				if not ok then
-					errorHandler("onceTimeout", name, err)
+					errorHandler("OnceTimeout", name, err)
 				end
 			else
 				timeoutCallback()
@@ -731,7 +748,7 @@ function taskManager.onceTimeout(name, signalLike, timeoutSeconds, callback, tim
 		if entry.active == false then
 			return
 		end
-		taskManager.stop(name)
+		TaskManager.Stop(name)
 		if protectedCalls then
 			local ok, err
 			if extraArgs then
@@ -740,7 +757,7 @@ function taskManager.onceTimeout(name, signalLike, timeoutSeconds, callback, tim
 				ok, err = pcall(callback, ...)
 			end
 			if not ok then
-				errorHandler("onceTimeout", name, err)
+				errorHandler("OnceTimeout", name, err)
 			end
 		else
 			if extraArgs then
@@ -757,7 +774,7 @@ local function registerLoopTask(stepName, name, priorityLevel, callback, ...)
 	assertName(name)
 	assertCallback(callback)
 	assert(type(priorityLevel) == "number", "priorityLevel must be number")
-	taskManager.stop(name)
+	TaskManager.Stop(name)
 	local loop = ensureLoop(stepName)
 	ensureLoopConnection(loop)
 	local bucket = loop.buckets[priorityLevel]
@@ -783,36 +800,36 @@ local function registerLoopTask(stepName, name, priorityLevel, callback, ...)
 	tasksByName[name] = entry
 	return entry
 end
-function taskManager.priority(name, priorityLevel, callback, ...)
+function TaskManager.Priority(name, priorityLevel, callback, ...)
 	return registerLoopTask("heartbeat", name, priorityLevel, callback, ...)
 end
-function taskManager.heartbeat(name, callback, ...)
+function TaskManager.Heartbeat(name, callback, ...)
 	return registerLoopTask("heartbeat", name, 0, callback, ...)
 end
-function taskManager.preSimulation(name, priorityLevel, callback, ...)
+function TaskManager.PreSimulation(name, priorityLevel, callback, ...)
 	return registerLoopTask("preSimulation", name, priorityLevel, callback, ...)
 end
-function taskManager.postSimulation(name, priorityLevel, callback, ...)
+function TaskManager.PostSimulation(name, priorityLevel, callback, ...)
 	return registerLoopTask("postSimulation", name, priorityLevel, callback, ...)
 end
-function taskManager.preAnimation(name, priorityLevel, callback, ...)
+function TaskManager.PreAnimation(name, priorityLevel, callback, ...)
 	return registerLoopTask("preAnimation", name, priorityLevel, callback, ...)
 end
-function taskManager.preRender(name, priorityLevel, callback, ...)
+function TaskManager.PreRender(name, priorityLevel, callback, ...)
 	return registerLoopTask("preRender", name, priorityLevel, callback, ...)
 end
-function taskManager.renderStepped(name, priorityLevel, callback, ...)
+function TaskManager.RenderStepped(name, priorityLevel, callback, ...)
 	return registerLoopTask("renderStepped", name, priorityLevel, callback, ...)
 end
-function taskManager.stepped(name, priorityLevel, callback, ...)
+function TaskManager.Stepped(name, priorityLevel, callback, ...)
 	return registerLoopTask("stepped", name, priorityLevel, callback, ...)
 end
-function taskManager.bindToRenderStep(name, renderPriority, callback, ...)
+function TaskManager.BindToRenderStep(name, renderPriority, callback, ...)
 	assertName(name)
 	assertCallback(callback)
 	assert(type(renderPriority) == "number", "renderPriority must be number")
-	assert(runService:IsClient(), "bindToRenderStep is client-only")
-	taskManager.stop(name)
+	assert(runService:IsClient(), "BindToRenderStep is client-only")
+	TaskManager.Stop(name)
 	local entry = {
 		kind = "renderBind",
 		name = name,
@@ -828,7 +845,7 @@ function taskManager.bindToRenderStep(name, renderPriority, callback, ...)
 		if protectedCalls then
 			local ok, err = pcall(callEvent1, entry, dt)
 			if not ok then
-				errorHandler("bindToRenderStep", name, err)
+				errorHandler("BindToRenderStep", name, err)
 			end
 		else
 			callEvent1(entry, dt)
@@ -837,10 +854,10 @@ function taskManager.bindToRenderStep(name, renderPriority, callback, ...)
 	tasksByName[name] = entry
 	return entry
 end
-function taskManager.queue(name, callback, ...)
+function TaskManager.Queue(name, callback, ...)
 	assertName(name)
 	assertCallback(callback)
-	taskManager.stop(name)
+	TaskManager.Stop(name)
 	local entry = {
 		kind = "queue",
 		name = name,
@@ -863,11 +880,11 @@ function taskManager.queue(name, callback, ...)
 	ensureLoopConnection(ensureLoop("heartbeat"))
 	return entry
 end
-function taskManager.delay(name, seconds, callback, ...)
+function TaskManager.Delay(name, seconds, callback, ...)
 	assertName(name)
 	assert(type(seconds) == "number", "seconds must be number")
 	assertCallback(callback)
-	taskManager.stop(name)
+	TaskManager.Stop(name)
 	local entry = {
 		kind = "timer",
 		name = name,
@@ -882,10 +899,10 @@ function taskManager.delay(name, seconds, callback, ...)
 	ensureLoopConnection(ensureLoop("heartbeat"))
 	return entry
 end
-function taskManager.defer(name, callback, ...)
+function TaskManager.Defer(name, callback, ...)
 	assertName(name)
 	assertCallback(callback)
-	taskManager.stop(name)
+	TaskManager.Stop(name)
 	local entry = {
 		kind = "thread",
 		name = name,
@@ -906,7 +923,7 @@ function taskManager.defer(name, callback, ...)
 		if protectedCalls then
 			local ok, err = pcall(callNoEvent, entry)
 			if not ok then
-				errorHandler("defer", name, err)
+				errorHandler("Defer", name, err)
 			end
 		else
 			callNoEvent(entry)
@@ -916,11 +933,11 @@ function taskManager.defer(name, callback, ...)
 	tasksByName[name] = entry
 	return entry
 end
-function taskManager.loop(name, interval, callback)
+function TaskManager.Loop(name, interval, callback)
 	assertName(name)
 	assert(type(interval) == "number", "interval must be a number")
 	assertCallback(callback)
-	taskManager.stop(name)
+	TaskManager.Stop(name)
 	local entry = {
 		kind = "loop",
 		name = name,
@@ -933,7 +950,7 @@ function taskManager.loop(name, interval, callback)
 			if protectedCalls then
 				local ok, err = pcall(callback)
 				if not ok then
-					errorHandler("loop", name, err)
+					errorHandler("Loop", name, err)
 				end
 			else
 				callback()
@@ -948,22 +965,22 @@ function taskManager.loop(name, interval, callback)
 	end)
 	return entry
 end
-function taskManager.condition(name, predicate, timeoutSeconds, callback)
+function TaskManager.Condition(name, predicate, timeoutSeconds, callback)
 	assertName(name)
 	assertCallback(predicate)
 	if timeoutSeconds ~= nil then
 		assert(type(timeoutSeconds) == "number", "timeoutSeconds must be number or nil")
 	end
 	assertCallback(callback)
-	taskManager.stop(name)
+	TaskManager.Stop(name)
 	local dueTime = nil
 	if timeoutSeconds ~= nil and timeoutSeconds > 0 then
 		dueTime = osClock() + timeoutSeconds
 	end
 	local entry
-	entry = taskManager.priority(name, 0, function()
+	entry = TaskManager.Priority(name, 0, function()
 		if dueTime and schedulerNow >= dueTime then
-			taskManager.stop(name)
+			TaskManager.Stop(name)
 			callback(false)
 			return
 		end
@@ -971,25 +988,25 @@ function taskManager.condition(name, predicate, timeoutSeconds, callback)
 		if protectedCalls then
 			ok, result = pcall(predicate)
 			if not ok then
-				taskManager.stop(name)
-				errorHandler("condition", name, result)
+				TaskManager.Stop(name)
+				errorHandler("Condition", name, result)
 				return
 			end
 		else
 			result = predicate()
 		end
 		if result then
-			taskManager.stop(name)
+			TaskManager.Stop(name)
 			callback(true)
 		end
 	end)
 	return entry
 end
-function taskManager.sleep(seconds)
+function TaskManager.Sleep(seconds)
 	assert(type(seconds) == "number", "seconds must be number")
 	local thread = coroutineRunning()
 	if not thread then
-		error("sleep must be called from a coroutine")
+		error("Sleep must be called from a coroutine")
 	end
 	local resumed = false
 	local timerEntry = {
@@ -1003,7 +1020,7 @@ function taskManager.sleep(seconds)
 			resumed = true
 			local ok, err = coroutineResume(thread)
 			if not ok then
-				errorHandler("sleep", "coroutine", err)
+				errorHandler("Sleep", "coroutine", err)
 			end
 		end,
 		active = true,
@@ -1014,14 +1031,14 @@ function taskManager.sleep(seconds)
 	ensureLoopConnection(ensureLoop("heartbeat"))
 	coroutineYield()
 end
-function taskManager.awaitSignal(signalLike, timeoutSeconds)
+function TaskManager.AwaitSignal(signalLike, timeoutSeconds)
 	assertSignal(signalLike)
 	if timeoutSeconds ~= nil then
 		assert(type(timeoutSeconds) == "number", "timeoutSeconds must be number or nil")
 	end
 	local thread = coroutineRunning()
 	if not thread then
-		error("awaitSignal must be called from a coroutine")
+		error("AwaitSignal must be called from a coroutine")
 	end
 	local done = false
 	local connection = nil
@@ -1041,7 +1058,7 @@ function taskManager.awaitSignal(signalLike, timeoutSeconds)
 		timerEntry = nil
 		local ok, err = coroutineResume(thread, success, ...)
 		if not ok then
-			errorHandler("awaitSignal", "coroutine", err)
+			errorHandler("AwaitSignal", "coroutine", err)
 		end
 	end
 	connection = signalLike:Connect(function(...)
@@ -1064,10 +1081,64 @@ function taskManager.awaitSignal(signalLike, timeoutSeconds)
 	end
 	return coroutineYield()
 end
+function TaskManager.AwaitAny(signals, timeoutSeconds)
+	assert(type(signals) == "table" and #signals > 0, "signals must be a non-empty table of RBXScriptSignals")
+	for i = 1, #signals do
+		assertSignal(signals[i])
+	end
+	if timeoutSeconds ~= nil then
+		assert(type(timeoutSeconds) == "number", "timeoutSeconds must be number or nil")
+	end
+	local thread = coroutineRunning()
+	if not thread then
+		error("AwaitAny must be called from a coroutine")
+	end
+	local done = false
+	local connections = {}
+	local timerEntry = nil
+	local function finish(success, index, ...)
+		if done then
+			return
+		end
+		done = true
+		for j = 1, #connections do
+			connections[j]:Disconnect()
+		end
+		if timerEntry and heapRemove(timerEntry) then
+			timerCount -= 1
+		end
+		timerEntry = nil
+		local ok, err = coroutineResume(thread, success, index, ...)
+		if not ok then
+			errorHandler("AwaitAny", "coroutine", err)
+		end
+	end
+	for i = 1, #signals do
+		connections[i] = signals[i]:Connect(function(...)
+			finish(true, i, ...)
+		end)
+	end
+	if timeoutSeconds and timeoutSeconds > 0 then
+		timerEntry = {
+			kind = "timerInternal",
+			name = nil,
+			dueTime = osClock() + timeoutSeconds,
+			callback = function()
+				finish(false, nil)
+			end,
+			active = true,
+			argCount = 0
+		}
+		timerCount += 1
+		heapPush(timerEntry)
+		ensureLoopConnection(ensureLoop("heartbeat"))
+	end
+	return coroutineYield()
+end
 
-function taskManager.Hook(name, targetFunction, replacementFunction)
+function TaskManager.Hook(name, targetFunction, replacementFunction)
 	assertName(name)
-	taskManager.stop(name)
+	TaskManager.Stop(name)
 	local original = hookfunction(targetFunction, newcclosure(replacementFunction))
 	local entry = {
 		kind = "hook",
@@ -1080,9 +1151,9 @@ function taskManager.Hook(name, targetFunction, replacementFunction)
 	return original, entry
 end
 
-function taskManager.HookMetamethod(name, object, metamethod, handler)
+function TaskManager.HookMetamethod(name, object, metamethod, handler)
 	assertName(name)
-	taskManager.stop(name)
+	TaskManager.Stop(name)
 	local original = hookmetamethod(object, metamethod, newcclosure(handler))
 	local entry = {
 		kind = "hookMeta",
@@ -1096,16 +1167,12 @@ function taskManager.HookMetamethod(name, object, metamethod, handler)
 	return original, entry
 end
 
-function taskManager.ClearDrawings(prefix)
-	for name in pairs(tasksByName) do
-		if name:sub(1, #prefix) == prefix then
-			taskManager.stop(name)
-		end
-	end
+function TaskManager.ClearDrawings(prefix)
+	TaskManager.StopPattern(prefix)
 	cleardrawcache()
 end
 
-function taskManager.ListActive()
+function TaskManager.ListActive()
 	local names = {}
 	for name, entry in pairs(tasksByName) do
 		if entry.active ~= false then
@@ -1115,5 +1182,5 @@ function taskManager.ListActive()
 	return names
 end
 
-getgenv().taskManager = taskManager
-return taskManager
+getgenv().taskManager = TaskManager
+return TaskManager
