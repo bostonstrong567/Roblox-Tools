@@ -1,20 +1,7 @@
--- TaskManager.lua
--- Named task scheduler for RunService steps, signals, deferred work, queued work, and timed callbacks.
---
--- Design goals:
--- - Single task per name (re-register replaces the old one).
--- - Minimal allocations in the hot paths (Heartbeat loops and repeat callbacks).
--- - Optional protected execution via pcall and a configurable error handler.
--- - Priority buckets for per-step repeat tasks.
--- - Min-heap for timers and a linked-list queue for queued callbacks.
---
--- Intended usage: Roblox Luau ModuleScript (require caching provides singleton behavior).
-
 if getgenv().taskManager then return getgenv().taskManager end
 
 local RunService = game:GetService("RunService")
 
---// Hot locals (reduces global lookups in tight loops)
 local Assert = assert
 local Type = type
 local Typeof = typeof
@@ -43,31 +30,21 @@ local Pairs = pairs
 
 local TaskManager = {}
 
--- Name -> entry
 local TasksByName = {}
-
--- stepName -> loop object
 local Loops = {}
 
--- Scheduler settings
 local ProtectedCalls = true
 local MaxQueuePerStep = math.huge
 local MaxTimersPerStep = math.huge
-local MaxStepTime = 0 -- seconds, 0 disables time budget
+local MaxStepTime = 0
 
--- Updated once per Heartbeat before timers/queue/repeat work.
 local SchedulerNow = 0
 
--- Error handler
 local function DefaultErrorHandler(kind, name, err)
 	Warn(("TaskManager %s '%s' error: %s"):format(ToString(kind), ToString(name), ToString(err)))
 end
 
 local ErrorHandler = DefaultErrorHandler
-
---////////////////////////////////////////////////////////////////////
--- Validation helpers
---////////////////////////////////////////////////////////////////////
 
 local function AssertName(name: any)
 	Assert(Type(name) == "string" and name ~= "", "name must be a non-empty string")
@@ -80,10 +57,6 @@ end
 local function AssertSignal(signalLike: any)
 	Assert(Typeof(signalLike) == "RBXScriptSignal", "signalLike must be RBXScriptSignal")
 end
-
---////////////////////////////////////////////////////////////////////
--- Arg storage (avoids table allocations for small argument counts)
---////////////////////////////////////////////////////////////////////
 
 local function SetArgs(entry, ...)
 	local n = Select("#", ...)
@@ -117,11 +90,6 @@ local function SetArgs(entry, ...)
 
 	entry.args = TablePack(...)
 end
-
---////////////////////////////////////////////////////////////////////
--- Callback invocation helpers
--- entry.argCount is the count of stored args to append after event args.
---////////////////////////////////////////////////////////////////////
 
 local function CallNoEvent(entry)
 	local cb = entry.callback
@@ -223,8 +191,6 @@ local function CallEvent4(entry, a1, a2, a3, a4)
 	end
 end
 
--- Used by Signal/Once/OnceTimeout to append stored args after an unknown number of signal args.
--- Fast path for 0..4 signal args; fallback allocates once if the signal fires with >4 args.
 local function CallSignal(entry, ...)
 	if entry.argCount == 0 then
 		entry.callback(...)
@@ -243,7 +209,6 @@ local function CallSignal(entry, ...)
 	elseif eventCount == 4 then
 		CallEvent4(entry, ...)
 	else
-		-- Slow path: build one argument list so unpack happens once.
 		local packed = TablePack(...)
 		local n = packed.n
 
@@ -263,10 +228,6 @@ local function CallSignal(entry, ...)
 		entry.callback(TableUnpack(packed, 1, n))
 	end
 end
-
---////////////////////////////////////////////////////////////////////
--- Timer heap (min-heap by dueTime)
---////////////////////////////////////////////////////////////////////
 
 local TimerHeap = {}
 
@@ -366,10 +327,6 @@ local function HeapRemove(entry)
 	return true
 end
 
---////////////////////////////////////////////////////////////////////
--- Queue (linked list)
---////////////////////////////////////////////////////////////////////
-
 local QueueHead = nil
 local QueueTail = nil
 local QueueCount = 0
@@ -393,10 +350,6 @@ local function RemoveFromQueue(entry)
 	entry.prev = nil
 	entry.next = nil
 end
-
---////////////////////////////////////////////////////////////////////
--- Loop scheduling (RunService steps)
---////////////////////////////////////////////////////////////////////
 
 local function RebuildLoopOrder(loop)
 	TableClear(loop.priorityOrder)
@@ -424,7 +377,7 @@ local function RunLoopEvent1(loop, a1)
 			local i = 1
 			while i <= #bucket do
 				local entry = bucket[i]
-				if entry.active == false then
+				if entry.active == false or entry.paused then
 					i += 1
 				else
 					if usePcall then
@@ -436,7 +389,6 @@ local function RunLoopEvent1(loop, a1)
 						CallEvent1(entry, a1)
 					end
 
-					-- If entry removed itself during execution, bucket[i] now holds a different entry.
 					if bucket[i] == entry then
 						i += 1
 					end
@@ -463,7 +415,7 @@ local function RunLoopEvent2(loop, a1, a2)
 			local i = 1
 			while i <= #bucket do
 				local entry = bucket[i]
-				if entry.active == false then
+				if entry.active == false or entry.paused then
 					i += 1
 				else
 					if usePcall then
@@ -540,12 +492,10 @@ local function EnsureLoop(stepName)
 		signal = signal,
 		eventArity = eventArity,
 		connection = nil,
-
-		buckets = {},          -- priority -> array of entries
-		priorityOrder = {},    -- sorted list of priorities
+		buckets = {},
+		priorityOrder = {},
 		dirty = false,
-
-		repeatCount = 0,       -- number of active repeat entries in this loop
+		repeatCount = 0,
 	}
 
 	Loops[stepName] = loop
@@ -557,12 +507,10 @@ local function EnsureLoopConnection(loop)
 		return
 	end
 
-	-- Client-only steps
 	if loop.name == "preRender" or loop.name == "renderStepped" then
 		Assert(RunService:IsClient(), loop.name .. " is client-only")
 	end
 
-	-- Heartbeat is special: drives timers + queue + heartbeat repeat tasks.
 	if loop.name == "heartbeat" then
 		loop.connection = loop.signal:Connect(function(dt)
 			SchedulerNow = Now()
@@ -570,7 +518,6 @@ local function EnsureLoopConnection(loop)
 			local errHandler = ErrorHandler
 			local budgetStart = SchedulerNow
 
-			-- Process due timers (bounded).
 			local timersProcessed = 0
 			while timersProcessed < MaxTimersPerStep do
 				local top = TimerHeap[1]
@@ -580,7 +527,6 @@ local function EnsureLoopConnection(loop)
 
 				local timerEntry = HeapPop()
 
-				-- Remove by-name mapping only if it still points at this entry.
 				if timerEntry.name and TasksByName[timerEntry.name] == timerEntry then
 					TasksByName[timerEntry.name] = nil
 				end
@@ -602,7 +548,6 @@ local function EnsureLoopConnection(loop)
 				end
 			end
 
-			-- Process queue work (bounded).
 			local processed = 0
 			while QueueHead and processed < MaxQueuePerStep do
 				local entry = QueueHead
@@ -638,16 +583,13 @@ local function EnsureLoopConnection(loop)
 				end
 			end
 
-			-- Run heartbeat repeat tasks last.
 			RunLoopEvent1(loop, dt)
-
 			MaybeDisconnectHeartbeat()
 		end)
 
 		return
 	end
 
-	-- Non-heartbeat steps only run repeat tasks for that step.
 	if loop.eventArity == 2 then
 		loop.connection = loop.signal:Connect(function(a1, a2)
 			RunLoopEvent2(loop, a1, a2)
@@ -690,16 +632,13 @@ local function RemoveFromBucket(entry)
 	end
 end
 
---////////////////////////////////////////////////////////////////////
--- Stop logic
---////////////////////////////////////////////////////////////////////
-
 local function StopInternal(name, entry)
 	if not entry or entry.active == false then
 		return
 	end
 
 	entry.active = false
+	entry.paused = nil
 
 	local kind = entry.kind
 
@@ -834,21 +773,12 @@ local function StopInternal(name, entry)
 	end
 end
 
---////////////////////////////////////////////////////////////////////
--- Public configuration
---////////////////////////////////////////////////////////////////////
-
--- TaskManager.SetProtectedCalls(enabled)
--- When enabled, callback execution is wrapped in pcall and routed to the current error handler.
+-- Enables or disables pcall wrapping around all callback execution. When enabled, errors route to the error handler instead of crashing.
 function TaskManager.SetProtectedCalls(enabled)
 	ProtectedCalls = enabled == true
 end
 
--- TaskManager.SetQueueLimits(maxPerStep, maxSeconds, maxTimersPerStep)
--- Limits work processed inside Heartbeat:
--- - maxPerStep: maximum queued callbacks processed per Heartbeat (default math.huge)
--- - maxSeconds: time budget in seconds for (timers + queue) processing (default 0 = disabled)
--- - maxTimersPerStep: maximum due timers processed per Heartbeat (default math.huge)
+-- Sets per-frame limits for Heartbeat processing: max queued callbacks, time budget in seconds, and max due timers. Pass nil to leave a value unchanged.
 function TaskManager.SetQueueLimits(maxPerStep, maxSeconds, maxTimersPerStep)
 	if maxPerStep ~= nil then
 		Assert(Type(maxPerStep) == "number", "maxPerStep must be number or nil")
@@ -864,36 +794,29 @@ function TaskManager.SetQueueLimits(maxPerStep, maxSeconds, maxTimersPerStep)
 	end
 end
 
--- TaskManager.SetErrorHandler(handler)
--- handler(kind, name, err) is called when ProtectedCalls is enabled and a callback errors.
+-- Sets a custom error handler function(kind, name, err) called when ProtectedCalls is on and a callback errors. Pass nil to restore the default handler.
 function TaskManager.SetErrorHandler(handler)
 	Assert(handler == nil or Type(handler) == "function", "handler must be function or nil")
 	ErrorHandler = handler or DefaultErrorHandler
 end
 
--- TaskManager.SetClock(clockFn)
--- Overrides the clock used for timers/timeouts. Must be monotonic increasing seconds.
+-- Overrides the clock function used for all timer and timeout calculations. Must return monotonically increasing seconds.
 function TaskManager.SetClock(clockFn)
 	Assert(Type(clockFn) == "function", "clockFn must be a function")
 	Now = clockFn
 end
 
---////////////////////////////////////////////////////////////////////
--- Public lifecycle and querying
---////////////////////////////////////////////////////////////////////
-
--- TaskManager.Get(name) -> entry|nil
+-- Returns the internal entry table for a named task, or nil if not found.
 function TaskManager.Get(name)
 	return TasksByName[name]
 end
 
--- TaskManager.Exists(name) -> boolean
+-- Returns true if a task with the given name is currently registered.
 function TaskManager.Exists(name)
 	return TasksByName[name] ~= nil
 end
 
--- TaskManager.Stop(name)
--- Stops the named task if it exists.
+-- Permanently stops and removes a named task, disconnecting connections and cleaning up all internal state.
 function TaskManager.Stop(name)
 	local entry = TasksByName[name]
 	if entry then
@@ -901,8 +824,7 @@ function TaskManager.Stop(name)
 	end
 end
 
--- TaskManager.StopAll()
--- Stops all registered named tasks.
+-- Stops and removes every registered named task.
 function TaskManager.StopAll()
 	local names = {}
 	for name in Pairs(TasksByName) do
@@ -917,8 +839,7 @@ function TaskManager.StopAll()
 	end
 end
 
--- TaskManager.StopPattern(prefix)
--- Stops all tasks whose name begins with prefix.
+-- Stops and removes all tasks whose name starts with the given prefix.
 function TaskManager.StopPattern(prefix)
 	Assert(Type(prefix) == "string" and prefix ~= "", "prefix must be a non-empty string")
 	local prefixLen = #prefix
@@ -939,28 +860,31 @@ function TaskManager.StopPattern(prefix)
 	end
 end
 
--- TaskManager.ListActive() -> {string}
--- Returns a list of "name [kind]" strings for active named tasks.
+-- Returns an array of "name [kind]" strings for all active tasks. Paused tasks are marked with "(paused)".
 function TaskManager.ListActive()
 	local out = {}
 	for name, entry in Pairs(TasksByName) do
 		if entry.active ~= false then
-			out[#out + 1] = name .. " [" .. entry.kind .. "]"
+			local suffix = entry.paused and " (paused)" or ""
+			out[#out + 1] = name .. " [" .. entry.kind .. "]" .. suffix
 		end
 	end
 	return out
 end
 
--- TaskManager.GetStats() -> table
--- Lightweight introspection snapshot for debugging/perf monitoring.
+-- Returns a snapshot table of scheduler statistics: task counts by kind, paused count, queue/timer counts, connection state, and limits.
 function TaskManager.GetStats()
 	local byKind = {}
 	local total = 0
+	local pausedCount = 0
 	for _, entry in Pairs(TasksByName) do
 		if entry.active ~= false then
 			total += 1
 			local k = entry.kind
 			byKind[k] = (byKind[k] or 0) + 1
+			if entry.paused then
+				pausedCount += 1
+			end
 		end
 	end
 
@@ -968,6 +892,7 @@ function TaskManager.GetStats()
 	return {
 		ProtectedCalls = ProtectedCalls,
 		TaskCount = total,
+		PausedCount = pausedCount,
 		ByKind = byKind,
 		QueueCount = QueueCount,
 		TimerCount = #TimerHeap,
@@ -978,8 +903,7 @@ function TaskManager.GetStats()
 	}
 end
 
--- TaskManager.UpdateArgs(name, ...) -> boolean
--- Updates stored args for supported task types (repeat/queue/timer/thread/connection/renderBind).
+-- Replaces the stored extra arguments on an existing task without stopping it. Returns true on success.
 function TaskManager.UpdateArgs(name, ...)
 	local entry = TasksByName[name]
 	if not entry or entry.active == false then
@@ -995,8 +919,7 @@ function TaskManager.UpdateArgs(name, ...)
 	return false
 end
 
--- TaskManager.UpdatePriority(name, newPriority) -> boolean
--- Changes the priority of a repeat (RunService step) task in-place.
+-- Moves an existing repeat task to a different priority bucket without stopping it. Returns true on success.
 function TaskManager.UpdatePriority(name, newPriority)
 	AssertName(name)
 	Assert(Type(newPriority) == "number", "newPriority must be number")
@@ -1008,10 +931,8 @@ function TaskManager.UpdatePriority(name, newPriority)
 
 	local loop = entry.loop
 
-	-- Remove from old bucket
 	RemoveFromBucket(entry)
 
-	-- Insert into new bucket
 	entry.priority = newPriority
 	local bucket = loop.buckets[newPriority]
 	if not bucket then
@@ -1027,13 +948,63 @@ function TaskManager.UpdatePriority(name, newPriority)
 	return true
 end
 
---////////////////////////////////////////////////////////////////////
--- Signals and one-shots
---////////////////////////////////////////////////////////////////////
+-- Pauses a named task so its callback is skipped each frame. The task stays registered with its priority and args intact.
+function TaskManager.Pause(name)
+	local entry = TasksByName[name]
+	if entry and entry.active ~= false then
+		entry.paused = true
+	end
+end
 
--- TaskManager.Signal(name, signalLike, callback, ...)
--- Connects callback to a RBXScriptSignal.
--- Stored args (...) are appended after the signal's emitted args.
+-- Resumes a previously paused task so its callback executes again.
+function TaskManager.Resume(name)
+	local entry = TasksByName[name]
+	if entry and entry.active ~= false then
+		entry.paused = nil
+	end
+end
+
+-- Toggles a task between paused and running.
+function TaskManager.Toggle(name)
+	local entry = TasksByName[name]
+	if entry and entry.active ~= false then
+		if entry.paused then
+			entry.paused = nil
+		else
+			entry.paused = true
+		end
+	end
+end
+
+-- Returns true if the named task exists and is currently paused.
+function TaskManager.IsPaused(name)
+	local entry = TasksByName[name]
+	return entry ~= nil and entry.paused == true
+end
+
+-- Pauses all tasks whose name starts with the given prefix.
+function TaskManager.PausePattern(prefix)
+	Assert(Type(prefix) == "string" and prefix ~= "", "prefix must be a non-empty string")
+	local prefixLen = #prefix
+	for name, entry in Pairs(TasksByName) do
+		if name:sub(1, prefixLen) == prefix and entry.active ~= false then
+			entry.paused = true
+		end
+	end
+end
+
+-- Resumes all tasks whose name starts with the given prefix.
+function TaskManager.ResumePattern(prefix)
+	Assert(Type(prefix) == "string" and prefix ~= "", "prefix must be a non-empty string")
+	local prefixLen = #prefix
+	for name, entry in Pairs(TasksByName) do
+		if name:sub(1, prefixLen) == prefix and entry.active ~= false then
+			entry.paused = nil
+		end
+	end
+end
+
+-- Connects a callback to an RBXScriptSignal by name. Stored args are appended after the signal's emitted args on every fire.
 function TaskManager.Signal(name, signalLike, callback, ...)
 	AssertName(name)
 	AssertSignal(signalLike)
@@ -1053,7 +1024,7 @@ function TaskManager.Signal(name, signalLike, callback, ...)
 	SetArgs(entry, ...)
 
 	entry.connection = signalLike:Connect(function(...)
-		if entry.active == false then
+		if entry.active == false or entry.paused then
 			return
 		end
 
@@ -1071,9 +1042,7 @@ function TaskManager.Signal(name, signalLike, callback, ...)
 	return entry
 end
 
--- TaskManager.Once(name, signalLike, callback, ...)
--- Connects callback to a RBXScriptSignal and auto-disconnects after the first fire.
--- Stored args (...) are appended after the signal's emitted args.
+-- Connects a callback to an RBXScriptSignal that auto-disconnects after firing once. Stored args are appended after the signal's emitted args.
 function TaskManager.Once(name, signalLike, callback, ...)
 	AssertName(name)
 	AssertSignal(signalLike)
@@ -1097,7 +1066,6 @@ function TaskManager.Once(name, signalLike, callback, ...)
 			return
 		end
 
-		-- Stop first so re-entrancy doesn't double fire
 		TaskManager.Stop(name)
 
 		if ProtectedCalls then
@@ -1114,9 +1082,7 @@ function TaskManager.Once(name, signalLike, callback, ...)
 	return entry
 end
 
--- TaskManager.OnceTimeout(name, signalLike, timeoutSeconds, callback, timeoutCallback, ...)
--- Waits for a signal once, but triggers timeoutCallback if timeoutSeconds elapses first.
--- If the signal fires, callback receives (signal args..., stored args...).
+-- Waits for a signal once within timeoutSeconds. Fires callback on signal or timeoutCallback on timeout.
 function TaskManager.OnceTimeout(name, signalLike, timeoutSeconds, callback, timeoutCallback, ...)
 	AssertName(name)
 	AssertSignal(signalLike)
@@ -1156,7 +1122,6 @@ function TaskManager.OnceTimeout(name, signalLike, timeoutSeconds, callback, tim
 		end
 	end
 
-	-- Internal timer entry (not stored in TasksByName)
 	local timerEntry = {
 		kind = "timerInternal",
 		name = nil,
@@ -1190,10 +1155,6 @@ function TaskManager.OnceTimeout(name, signalLike, timeoutSeconds, callback, tim
 	TasksByName[name] = entry
 	return entry
 end
-
---////////////////////////////////////////////////////////////////////
--- Repeat tasks on RunService steps (priority buckets)
---////////////////////////////////////////////////////////////////////
 
 local function RegisterLoopTask(stepName, name, priorityLevel, callback, ...)
 	AssertName(name)
@@ -1235,58 +1196,47 @@ local function RegisterLoopTask(stepName, name, priorityLevel, callback, ...)
 	return entry
 end
 
--- TaskManager.Priority(name, priorityLevel, callback, ...)
--- Runs every Heartbeat in ascending priority order.
+-- Runs callback every Heartbeat at the given priority level. Lower numbers execute first. callback(dt, storedArgs...).
 function TaskManager.Priority(name, priorityLevel, callback, ...)
 	return RegisterLoopTask("heartbeat", name, priorityLevel, callback, ...)
 end
 
--- TaskManager.Heartbeat(name, callback, ...)
--- Runs every Heartbeat at priority 0. callback(dt, storedArgs...)
+-- Runs callback every Heartbeat at default priority 0. callback(dt, storedArgs...).
 function TaskManager.Heartbeat(name, callback, ...)
 	return RegisterLoopTask("heartbeat", name, 0, callback, ...)
 end
 
--- TaskManager.PreSimulation(name, priorityLevel, callback, ...)
+-- Runs callback every PreSimulation step at the given priority. callback(dt, storedArgs...).
 function TaskManager.PreSimulation(name, priorityLevel, callback, ...)
 	return RegisterLoopTask("preSimulation", name, priorityLevel, callback, ...)
 end
 
--- TaskManager.PostSimulation(name, priorityLevel, callback, ...)
+-- Runs callback every PostSimulation step at the given priority. callback(dt, storedArgs...).
 function TaskManager.PostSimulation(name, priorityLevel, callback, ...)
 	return RegisterLoopTask("postSimulation", name, priorityLevel, callback, ...)
 end
 
--- TaskManager.PreAnimation(name, priorityLevel, callback, ...)
+-- Runs callback every PreAnimation step at the given priority. callback(dt, storedArgs...).
 function TaskManager.PreAnimation(name, priorityLevel, callback, ...)
 	return RegisterLoopTask("preAnimation", name, priorityLevel, callback, ...)
 end
 
--- TaskManager.PreRender(name, priorityLevel, callback, ...)
--- Client-only.
+-- Runs callback every PreRender step at the given priority. Client-only. callback(dt, storedArgs...).
 function TaskManager.PreRender(name, priorityLevel, callback, ...)
 	return RegisterLoopTask("preRender", name, priorityLevel, callback, ...)
 end
 
--- TaskManager.RenderStepped(name, priorityLevel, callback, ...)
--- Client-only.
+-- Runs callback every RenderStepped at the given priority. Client-only. callback(dt, storedArgs...).
 function TaskManager.RenderStepped(name, priorityLevel, callback, ...)
 	return RegisterLoopTask("renderStepped", name, priorityLevel, callback, ...)
 end
 
--- TaskManager.Stepped(name, priorityLevel, callback, ...)
--- callback(time, deltaTime, storedArgs...)
+-- Runs callback every Stepped at the given priority. callback(time, deltaTime, storedArgs...).
 function TaskManager.Stepped(name, priorityLevel, callback, ...)
 	return RegisterLoopTask("stepped", name, priorityLevel, callback, ...)
 end
 
---////////////////////////////////////////////////////////////////////
--- RenderStep binding
---////////////////////////////////////////////////////////////////////
-
--- TaskManager.BindToRenderStep(name, renderPriority, callback, ...)
--- Uses RunService:BindToRenderStep and can be stopped by name.
--- Client-only.
+-- Binds a callback to RunService:BindToRenderStep with the given render priority. Client-only. Stoppable and pausable by name.
 function TaskManager.BindToRenderStep(name, renderPriority, callback, ...)
 	AssertName(name)
 	AssertCallback(callback)
@@ -1307,7 +1257,7 @@ function TaskManager.BindToRenderStep(name, renderPriority, callback, ...)
 	SetArgs(entry, ...)
 
 	RunService:BindToRenderStep(name, renderPriority, function(dt)
-		if entry.active == false then
+		if entry.active == false or entry.paused then
 			return
 		end
 
@@ -1325,12 +1275,7 @@ function TaskManager.BindToRenderStep(name, renderPriority, callback, ...)
 	return entry
 end
 
---////////////////////////////////////////////////////////////////////
--- Queue and timers (driven by Heartbeat)
---////////////////////////////////////////////////////////////////////
-
--- TaskManager.Queue(name, callback, ...)
--- Adds a callback to the queue, processed on Heartbeat.
+-- Adds a one-shot callback to the FIFO queue, processed during Heartbeat subject to queue limits.
 function TaskManager.Queue(name, callback, ...)
 	AssertName(name)
 	AssertCallback(callback)
@@ -1365,8 +1310,7 @@ function TaskManager.Queue(name, callback, ...)
 	return entry
 end
 
--- TaskManager.Delay(name, seconds, callback, ...)
--- Schedules callback after seconds (driven by Heartbeat).
+-- Schedules a one-shot callback to fire after the given seconds, driven by the Heartbeat timer heap.
 function TaskManager.Delay(name, seconds, callback, ...)
 	AssertName(name)
 	Assert(Type(seconds) == "number", "seconds must be number")
@@ -1392,12 +1336,7 @@ function TaskManager.Delay(name, seconds, callback, ...)
 	return entry
 end
 
---////////////////////////////////////////////////////////////////////
--- Deferred/threaded work
---////////////////////////////////////////////////////////////////////
-
--- TaskManager.Defer(name, callback, ...)
--- Schedules callback via task.defer. Stop(name) cancels if it hasn't run yet.
+-- Schedules a callback via task.defer to run once on the next resumption cycle. Stoppable by name if it hasn't fired yet.
 function TaskManager.Defer(name, callback, ...)
 	AssertName(name)
 	AssertCallback(callback)
@@ -1439,8 +1378,7 @@ function TaskManager.Defer(name, callback, ...)
 	return entry
 end
 
--- TaskManager.Loop(name, interval, callback)
--- Spawns a coroutine loop. interval <= 0 yields once per cycle.
+-- Spawns a persistent coroutine loop that calls callback every interval seconds. Interval <= 0 yields once per frame. Stoppable and pausable by name.
 function TaskManager.Loop(name, interval, callback)
 	AssertName(name)
 	Assert(Type(interval) == "number", "interval must be a number")
@@ -1459,13 +1397,15 @@ function TaskManager.Loop(name, interval, callback)
 
 	TaskSpawn(function()
 		while entry.active do
-			if ProtectedCalls then
-				local ok, err = PCall(callback)
-				if not ok then
-					ErrorHandler("Loop", name, err)
+			if not entry.paused then
+				if ProtectedCalls then
+					local ok, err = PCall(callback)
+					if not ok then
+						ErrorHandler("Loop", name, err)
+					end
+				else
+					callback()
 				end
-			else
-				callback()
 			end
 
 			if not entry.active then
@@ -1483,13 +1423,7 @@ function TaskManager.Loop(name, interval, callback)
 	return entry
 end
 
---////////////////////////////////////////////////////////////////////
--- Condition helpers (runs predicate on Heartbeat until success/timeout)
---////////////////////////////////////////////////////////////////////
-
--- TaskManager.Condition(name, predicate, timeoutSeconds, callback)
--- Runs predicate each Heartbeat until it returns true or timeout expires.
--- callback(successBoolean)
+-- Polls a predicate each Heartbeat until it returns true or timeoutSeconds elapses. callback(true) on success, callback(false) on timeout. Pass nil timeout to wait forever.
 function TaskManager.Condition(name, predicate, timeoutSeconds, callback)
 	AssertName(name)
 	AssertCallback(predicate)
@@ -1534,12 +1468,7 @@ function TaskManager.Condition(name, predicate, timeoutSeconds, callback)
 	return entry
 end
 
---////////////////////////////////////////////////////////////////////
--- Coroutine utilities (Sleep / AwaitSignal / AwaitAny)
---////////////////////////////////////////////////////////////////////
-
--- TaskManager.Sleep(seconds)
--- Yields the current coroutine and resumes it after seconds (driven by Heartbeat).
+-- Yields the calling coroutine for the given seconds using the timer heap. Must be called from a coroutine.
 function TaskManager.Sleep(seconds)
 	Assert(Type(seconds) == "number", "seconds must be number")
 
@@ -1573,11 +1502,7 @@ function TaskManager.Sleep(seconds)
 	CoroutineYield()
 end
 
--- TaskManager.AwaitSignal(signalLike, timeoutSeconds) -> success, ...
--- Yields until signal fires, or timeout expires.
--- Returns:
---   (true, signalArgs...) on signal
---   (false) on timeout
+-- Yields until the signal fires or timeoutSeconds elapses. Returns (true, signalArgs...) on fire, (false) on timeout. Must be called from a coroutine.
 function TaskManager.AwaitSignal(signalLike, timeoutSeconds)
 	AssertSignal(signalLike)
 	if timeoutSeconds ~= nil then
@@ -1638,11 +1563,7 @@ function TaskManager.AwaitSignal(signalLike, timeoutSeconds)
 	return CoroutineYield()
 end
 
--- TaskManager.AwaitAny(signals, timeoutSeconds) -> success, index, ...
--- Yields until any signal fires, or timeout expires.
--- Returns:
---   (true, signalIndex, signalArgs...) on signal
---   (false, nil) on timeout
+-- Yields until any signal in the array fires or timeoutSeconds elapses. Returns (true, index, signalArgs...) on fire, (false, nil) on timeout. Must be called from a coroutine.
 function TaskManager.AwaitAny(signals, timeoutSeconds)
 	Assert(Type(signals) == "table" and #signals > 0, "signals must be a non-empty table of RBXScriptSignals")
 	for i = 1, #signals do
@@ -1708,13 +1629,7 @@ function TaskManager.AwaitAny(signals, timeoutSeconds)
 	return CoroutineYield()
 end
 
---////////////////////////////////////////////////////////////////////
--- Function hooking (executor environment)
---////////////////////////////////////////////////////////////////////
-
--- TaskManager.Hook(name, targetFunction, replacementFunction) -> original, entry
--- Hooks targetFunction with replacementFunction via hookfunction/newcclosure.
--- Stop(name) restores the original function.
+-- Hooks targetFunction with replacementFunction via hookfunction/newcclosure. Returns the original function. Stop(name) restores it.
 function TaskManager.Hook(name, targetFunction, replacementFunction)
 	AssertName(name)
 
@@ -1733,9 +1648,7 @@ function TaskManager.Hook(name, targetFunction, replacementFunction)
 	return original, entry
 end
 
--- TaskManager.HookMetamethod(name, object, metamethod, handler) -> original, entry
--- Hooks a metamethod on object via hookmetamethod/newcclosure.
--- Stop(name) restores the original metamethod.
+-- Hooks a metamethod on the given object via hookmetamethod/newcclosure. Returns the original. Stop(name) restores it.
 function TaskManager.HookMetamethod(name, object, metamethod, handler)
 	AssertName(name)
 
