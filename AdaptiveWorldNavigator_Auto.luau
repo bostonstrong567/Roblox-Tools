@@ -30,7 +30,7 @@ local RAY_DEPTH = 900
 local CACHE_SOFT_LIMIT = 28000
 local DIRTY_REGION_TTL = 3.5
 local DIRTY_REGION_MAX = 768
-local DYNAMIC_SCAN_BUDGET = 12
+local DYNAMIC_SCAN_BUDGET = 6
 local DYNAMIC_MOVE_EPS = 0.35
 local HAZARD_MAX = 256
 local HAZARD_TTL = 12
@@ -404,17 +404,10 @@ function Navigator:Start()
     end
     self._started = true
 
-    for _, inst in ipairs(Workspace:GetDescendants()) do
-        if inst:IsA("BasePart") then
-            self:_touchBounds(inst)
-            if (not inst.Anchored) or humanoidAncestor(inst) then
-                self:_registerDynamic(inst)
-            end
-        end
-    end
-
+    -- No blocking initial scan — bounds and dynamic parts discovered lazily via events
     table.insert(self._cons, Workspace.DescendantAdded:Connect(function(inst)
         if inst:IsA("BasePart") then
+            self:_touchBounds(inst)
             self:_markPartDirty(inst)
             if (not inst.Anchored) or humanoidAncestor(inst) then
                 self:_registerDynamic(inst)
@@ -428,6 +421,22 @@ function Navigator:Start()
             self:_unregisterDynamic(inst)
         end
     end))
+
+    -- Background scan: spread the initial GetDescendants over multiple frames
+    task.spawn(function()
+        local descendants = Workspace:GetDescendants()
+        for i, inst in ipairs(descendants) do
+            if inst:IsA("BasePart") then
+                self:_touchBounds(inst)
+                if (not inst.Anchored) or humanoidAncestor(inst) then
+                    self:_registerDynamic(inst)
+                end
+            end
+            if i % 200 == 0 then
+                RunService.Heartbeat:Wait()
+            end
+        end
+    end)
 
     table.insert(self._cons, STEP_SIGNAL:Connect(function()
         self:_pruneDirtyRegions()
