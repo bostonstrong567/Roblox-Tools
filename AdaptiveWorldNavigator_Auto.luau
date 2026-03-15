@@ -1416,17 +1416,15 @@ function Navigator:CreateMover(humanoid)
         self.Navigator._activeMovers[self] = nil
     end
 
-    function mover:_requestPlan(force)
+    function mover:_requestPlan()
         if not self.Goal or not self.Active then
             return
         end
-        -- Don't replan if already planning
         if self.Planning then
             return
         end
-        -- Throttle: don't replan more than once per second
         local t = nowS()
-        if not force and t - self.LastPlanAt < 1 then
+        if t - self.LastPlanAt < 1 then
             return
         end
         self.Planning = true
@@ -1741,6 +1739,9 @@ function Navigator:CreateMover(humanoid)
 
         if flat(self.Root.Position - self.Goal).Magnitude <= profile.ReachedRadius then
             self._stepReason = "reached_goal"
+            self.Goal = nil
+            self.Path = nil
+            self.PathIndex = 1
             self.Humanoid:Move(Vector3.zero, false)
             return
         end
@@ -1763,7 +1764,7 @@ function Navigator:CreateMover(humanoid)
 
         if self:_needPlan(profile, dt) then
             local planT0 = nowS()
-            self:_requestPlan(true)
+            self:_requestPlan()
             self._perf.planMs = (nowS() - planT0) * 1000
         end
 
@@ -1780,7 +1781,7 @@ function Navigator:CreateMover(humanoid)
                     self._stepReason = "jump:obstacle"
                 else
                     moveDir = self.Navigator:_lateral(profile, moveDir, self.Character)
-                    self:_requestPlan(true)
+                    self:_requestPlan()
                     self._stepReason = "lateral"
                 end
             elseif self.Navigator:_voidAhead(profile, moveDir, self.Character) then
@@ -1789,7 +1790,7 @@ function Navigator:CreateMover(humanoid)
                     self._stepReason = "jump:void"
                 else
                     self.Humanoid:Move(Vector3.zero, false)
-                    self:_requestPlan(true)
+                    self:_requestPlan()
                     self._stepReason = "void_stop"
                     local stepMs = (nowS() - stepT0) * 1000
                     self._perf.stepMs = stepMs
@@ -1894,7 +1895,7 @@ function Navigator:CreateMover(humanoid)
             mover:_step(dt)
         end)
         if not ok then
-            -- error logged silently; client reads _stepReason
+            mover._stepReason = "error:" .. tostring(err)
         end
     end)
     mover.Connection = {
