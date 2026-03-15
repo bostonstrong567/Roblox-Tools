@@ -30,11 +30,11 @@ local RAY_DEPTH = 900
 local CACHE_SOFT_LIMIT = 28000
 local DIRTY_REGION_TTL = 3.5
 local DIRTY_REGION_MAX = 768
-local DYNAMIC_SCAN_BUDGET = 28
+local DYNAMIC_SCAN_BUDGET = 12
 local DYNAMIC_MOVE_EPS = 0.35
 local HAZARD_MAX = 256
 local HAZARD_TTL = 12
-local TRAJECTORY_SAMPLE_CAP = 8
+local TRAJECTORY_SAMPLE_CAP = 4
 local STUCK_EPS = 0.65
 local TURN_RESPONSIVENESS = 55
 
@@ -601,10 +601,6 @@ function Navigator:_supportScore(profile, floorPos, baseFloorY, ignoreModel)
         Vector3.new(-profile.Radius * 0.55, 0, 0),
         Vector3.new(0, 0, profile.Radius * 0.55),
         Vector3.new(0, 0, -profile.Radius * 0.55),
-        Vector3.new(profile.Radius * 0.4, 0, profile.Radius * 0.4),
-        Vector3.new(profile.Radius * 0.4, 0, -profile.Radius * 0.4),
-        Vector3.new(-profile.Radius * 0.4, 0, profile.Radius * 0.4),
-        Vector3.new(-profile.Radius * 0.4, 0, -profile.Radius * 0.4),
     }
     local good = 0
     local total = #offsets
@@ -1481,13 +1477,10 @@ function Navigator:CreateMover(humanoid)
 
         local left = perpendicularLeft(baseDir)
         local right = -left
-        local blendLeft = safeUnit(baseDir + left * 0.55)
-        local blendRight = safeUnit(baseDir + right * 0.55)
-        local softLeft = safeUnit(baseDir + left * 0.3)
-        local softRight = safeUnit(baseDir + right * 0.3)
-        local reverse = -baseDir
+        local softLeft = safeUnit(baseDir + left * 0.35)
+        local softRight = safeUnit(baseDir + right * 0.35)
 
-        local dirs = {baseDir, softLeft, softRight, blendLeft, blendRight, left, right, reverse}
+        local dirs = {baseDir, softLeft, softRight, left, right}
         local unique = {}
         local out = {}
         local currentNode = self.Navigator:_nearestWalkable(profile, self.Root.Position, self.Character, 2)
