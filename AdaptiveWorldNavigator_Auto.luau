@@ -1635,19 +1635,24 @@ function Navigator:CreateMover(humanoid)
         end
     end
 
+    mover._stepReason = "init"
+
     function mover:_step(dt)
-        if not self.Active then return end
+        if not self.Active then self._stepReason = "inactive" return end
         if not self.Root.Parent or self.Humanoid.Health <= 0 then
+            self._stepReason = "dead/noroot"
             self:Stop()
             return
         end
         if not self.Goal then
+            self._stepReason = "no_goal"
             self.Humanoid:Move(Vector3.zero, false)
             return
         end
 
         local profile = self.Navigator:_profile(self.Humanoid)
         if not profile then
+            self._stepReason = "no_profile"
             return
         end
 
@@ -1659,6 +1664,7 @@ function Navigator:CreateMover(humanoid)
         state.Seated = state.Current == Enum.HumanoidStateType.Seated
 
         if flat(self.Root.Position - self.Goal).Magnitude <= profile.ReachedRadius then
+            self._stepReason = "reached_goal"
             self.Humanoid:Move(Vector3.zero, false)
             return
         end
@@ -1686,18 +1692,21 @@ function Navigator:CreateMover(humanoid)
         self:_advance(profile)
         local chosen = self:_chooseCandidate(profile)
         if not chosen then
+            self._stepReason = "no_candidate"
             self.Humanoid:Move(Vector3.zero, false)
             self:_requestPlan(true)
             return
         end
 
         if chosen.confidence < 0.12 then
+            self._stepReason = "low_confidence:" .. string.format("%.2f", chosen.confidence)
             self.Navigator:RecordHazard(self.Root.Position, profile.DynamicRadius * 0.35, 0.75, math.max(profile.ReplanInterval * 16, 2.5))
             self.Humanoid:Move(Vector3.zero, false)
             self:_requestPlan(true)
             return
         end
 
+        self._stepReason = "moving:" .. chosen.kind .. ":" .. string.format("%.2f", chosen.confidence)
         self:_applyCandidate(profile, chosen)
     end
 
@@ -1765,7 +1774,12 @@ function Navigator:CreateMover(humanoid)
         end),
     }
 
-    mover.Connection = STEP_SIGNAL:Connect(function(dt)
+    local MOVER_STEP_NAME = "NavUltimateMover_" .. tostring(math.random(100000, 999999))
+    local lastStepTime = os.clock()
+    RunService:BindToRenderStep(MOVER_STEP_NAME, Enum.RenderPriority.Input.Value + 1, function()
+        local now = os.clock()
+        local dt = now - lastStepTime
+        lastStepTime = now
         local ok, err = pcall(function()
             mover:_step(dt)
         end)
@@ -1773,6 +1787,11 @@ function Navigator:CreateMover(humanoid)
             warn("[AdaptiveWorldNavigator_Ultimate] mover error:", err)
         end
     end)
+    mover.Connection = {
+        Disconnect = function()
+            pcall(function() RunService:UnbindFromRenderStep(MOVER_STEP_NAME) end)
+        end,
+    }
 
     self._activeMovers[mover] = true
     return mover
