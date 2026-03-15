@@ -1165,7 +1165,8 @@ function Navigator:CreateMover(humanoid: Humanoid)
         if not self.Goal or not self.Active then
             return
         end
-        if self.Planning and not force then
+        -- Never re-trigger while a plan is in-flight — let it finish
+        if self.Planning then
             return
         end
         self.Planning = true
