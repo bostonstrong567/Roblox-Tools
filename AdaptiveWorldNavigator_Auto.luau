@@ -1012,8 +1012,8 @@ function Navigator:Plan(startPos, goalPos, humanoid, ignoreModel)
     self:_cacheTrimIfNeeded()
     self:_pruneHazards()
 
-    local startNode = self:_nearestWalkable(profile, startPos, ignoreModel, 4)
-    local goalNode = self:_nearestWalkable(profile, goalPos, ignoreModel, 7)
+    local startNode = self:_nearestWalkable(profile, startPos, ignoreModel, 2)
+    local goalNode = self:_nearestWalkable(profile, goalPos, ignoreModel, 3)
     if not startNode or not goalNode then
         return {Status = "NoSurface", Waypoints = {}, Expanded = 0}
     end
@@ -1029,6 +1029,8 @@ function Navigator:Plan(startPos, goalPos, humanoid, ignoreModel)
     gScore[startNode.key] = 0
     open:push(startNode.key, flat(goalNode.pos - startNode.pos).Magnitude)
 
+    local YIELD_BUDGET = 40
+
     while not open:isEmpty() and expanded < SEARCH_NODE_LIMIT do
         local currentKey = open:pop()
         if not currentKey or closed[currentKey] then
@@ -1036,6 +1038,11 @@ function Navigator:Plan(startPos, goalPos, humanoid, ignoreModel)
         end
         closed[currentKey] = true
         expanded += 1
+
+        -- Yield every YIELD_BUDGET nodes so the renderer doesn't freeze
+        if expanded % YIELD_BUDGET == 0 then
+            RunService.Heartbeat:Wait()
+        end
 
         local current = refs[currentKey]
         if not current then
@@ -1094,6 +1101,55 @@ function Navigator:_ensureFacing(root)
         align.Parent = root
     end
     return align
+end
+
+function Navigator:_obstacleAhead(profile, moveDir, ignoreModel)
+    if moveDir.Magnitude < 0.01 then
+        return nil
+    end
+    return Workspace:Raycast(
+        profile.Root.Position + Vector3.new(0, math.max(1.5, profile.Height * 0.35), 0),
+        safeUnit(moveDir) * profile.ProbeDistance,
+        self:_makeRayParams(ignoreModel and {ignoreModel} or {})
+    )
+end
+
+function Navigator:_voidAhead(profile, moveDir, ignoreModel)
+    local dir = safeUnit(moveDir)
+    if dir.Magnitude < 0.01 then
+        return false
+    end
+    local probePos = profile.Root.Position + dir * (profile.Radius + profile.CellSize * 0.55)
+    local hit = Workspace:Raycast(
+        Vector3.new(probePos.X, profile.Root.Position.Y + 2, probePos.Z),
+        Vector3.new(0, -(profile.Height + profile.MaxRise + 8), 0),
+        self:_makeRayParams(ignoreModel and {ignoreModel} or {})
+    )
+    if not hit then
+        return true
+    end
+    if profile.Root.Position.Y - hit.Position.Y > profile.SafeDrop then
+        return true
+    end
+    return false
+end
+
+function Navigator:_lateral(profile, moveDir, ignoreModel)
+    local dir = safeUnit(moveDir)
+    if dir.Magnitude < 0.01 then
+        return Vector3.zero
+    end
+    local left = Vector3.new(-dir.Z, 0, dir.X)
+    local right = Vector3.new(dir.Z, 0, -dir.X)
+    local params = self:_makeRayParams(ignoreModel and {ignoreModel} or {})
+    local origin = profile.Root.Position + Vector3.new(0, math.max(1.5, profile.Height * 0.35), 0)
+    local leftHit = Workspace:Raycast(origin, left * profile.ProbeDistance, params)
+    local rightHit = Workspace:Raycast(origin, right * profile.ProbeDistance, params)
+    if leftHit and not rightHit then return right end
+    if rightHit and not leftHit then return left end
+    if not leftHit then return left end
+    if not rightHit then return right end
+    return -dir
 end
 
 function Navigator:_supportAhead(profile, moveDir, ignoreModel, distance)
@@ -1705,25 +1761,49 @@ function Navigator:CreateMover(humanoid)
         end
 
         self:_advance(profile)
+        local wp = self:_currentWaypoint()
+        local moveDir = wp and safeUnit(flat(wp.Position - self.Root.Position)) or safeUnit(flat(self.Goal - self.Root.Position))
+        local grounded = state.Grounded
 
-        local candT0 = nowS()
-        local chosen = self:_chooseCandidate(profile)
-        local candMs = (nowS() - candT0) * 1000
-        self._perf.candidateMs = candMs
-
-        if not chosen then
-            self._stepReason = "no_candidate"
-            self.Humanoid:Move(Vector3.zero, false)
-            self:_requestPlan(true)
-        elseif chosen.confidence < 0.12 then
-            self._stepReason = "low_confidence:" .. string.format("%.2f", chosen.confidence)
-            self.Navigator:RecordHazard(self.Root.Position, profile.DynamicRadius * 0.35, 0.75, math.max(profile.ReplanInterval * 16, 2.5))
-            self.Humanoid:Move(Vector3.zero, false)
-            self:_requestPlan(true)
-        else
-            self._stepReason = "moving:" .. chosen.kind .. ":" .. string.format("%.2f", chosen.confidence)
-            self:_applyCandidate(profile, chosen)
+        if moveDir.Magnitude > 0.01 then
+            local obstacleHit = self.Navigator:_obstacleAhead(profile, moveDir, self.Character)
+            if obstacleHit then
+                if grounded and wp and wp.Action == "jump" then
+                    self.Humanoid.Jump = true
+                    self._stepReason = "jump:obstacle"
+                else
+                    moveDir = self.Navigator:_lateral(profile, moveDir, self.Character)
+                    self:_requestPlan(true)
+                    self._stepReason = "lateral"
+                end
+            elseif self.Navigator:_voidAhead(profile, moveDir, self.Character) then
+                if grounded and wp and wp.Action == "jump" then
+                    self.Humanoid.Jump = true
+                    self._stepReason = "jump:void"
+                else
+                    self.Humanoid:Move(Vector3.zero, false)
+                    self:_requestPlan(true)
+                    self._stepReason = "void_stop"
+                    local stepMs = (nowS() - stepT0) * 1000
+                    self._perf.stepMs = stepMs
+                    self._perf.stepCount += 1
+                    if stepMs > 8 then self._perf.slowFrames += 1 end
+                    return
+                end
+            end
         end
+
+        if wp and wp.Action == "drop" then
+            self._stepReason = "dropping"
+        elseif grounded and wp and wp.Action == "jump" then
+            self.Humanoid.Jump = true
+            self._stepReason = "jump:waypoint"
+        else
+            self._stepReason = "moving"
+        end
+
+        self:_updateFacing(moveDir)
+        self.Humanoid:Move(moveDir, false)
 
         local stepMs = (nowS() - stepT0) * 1000
         self._perf.stepMs = stepMs
