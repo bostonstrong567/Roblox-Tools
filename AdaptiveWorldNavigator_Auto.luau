@@ -490,14 +490,169 @@ function Navigator:_nearestWalkable(profile, position: Vector3, ignoreModel: Mod
     return nil
 end
 
+function Navigator:_floorHit(profile, position: Vector3, ignoreModel: Model?, extraHeight: number?)
+    local highY = math.max(
+        position.Y + (extraHeight or (profile.Height + profile.StepHeight + 8)),
+        self._worldBounds.hasAny and (self._worldBounds.maxY + 64) or RAY_MARGIN_Y
+    )
+
+    local exclude = {}
+    if ignoreModel then
+        table.insert(exclude, ignoreModel)
+    end
+
+    local hit = nil
+    for _ = 1, 5 do
+        hit = Workspace:Raycast(
+            Vector3.new(position.X, highY, position.Z),
+            Vector3.new(0, -(highY + RAY_DEPTH), 0),
+            self:_makeRayParams(exclude)
+        )
+        if not hit then
+            break
+        end
+        local humModel = humanoidAncestor(hit.Instance)
+        if humModel then
+            table.insert(exclude, humModel)
+            hit = nil
+        else
+            break
+        end
+    end
+
+    if not hit or not hit.Instance then
+        return nil
+    end
+    if hit.Normal.Y < SLOPE_NORMAL_Y then
+        return nil
+    end
+    return hit
+end
+
+function Navigator:_standInfo(profile, position: Vector3, ignoreModel: Model?, extraHeight: number?)
+    local hit = self:_floorHit(profile, position, ignoreModel, extraHeight)
+    if not hit then
+        return nil
+    end
+
+    local floorPos = Vector3.new(position.X, hit.Position.Y, position.Z)
+    local boxCenter = Vector3.new(floorPos.X, floorPos.Y + profile.Height * 0.5 + CLEARANCE_PAD, floorPos.Z)
+    local boxSize = Vector3.new(profile.Radius * 2, math.max(0.5, profile.Height - CLEARANCE_PAD), profile.Radius * 2)
+    local overlaps = Workspace:GetPartBoundsInBox(
+        CFrame.new(boxCenter),
+        boxSize,
+        self:_makeOverlapParams(ignoreModel and {ignoreModel} or {})
+    )
+
+    for _, part in ipairs(overlaps) do
+        if part ~= hit.Instance and isBlockingPart(part) then
+            return nil
+        end
+    end
+
+    return {
+        pos = floorPos,
+        floorY = floorPos.Y,
+        normal = hit.Normal,
+        instance = hit.Instance,
+    }
+end
+
+function Navigator:_dropFeasible(profile, fromNode, toNode, ignoreModel: Model?)
+    local delta = toNode.pos - fromNode.pos
+    local dy = delta.Y
+    if dy >= -profile.StepHeight then
+        return false, nil
+    end
+
+    local dist = flat(delta).Magnitude
+    if dist < math.max(1, profile.Radius * 0.5) then
+        return false, nil
+    end
+
+    local gravity = profile.Gravity
+    local dropHeight = math.max(0, fromNode.floorY - toNode.floorY)
+    local fallTime = math.sqrt((2 * math.max(0.1, dropHeight)) / gravity)
+    local horizontalVelocity = flat(profile.Root.AssemblyLinearVelocity).Magnitude
+    local travelBudget = math.max(horizontalVelocity, profile.WalkSpeed * 0.75) * fallTime + profile.CellSize
+    if dist > travelBudget then
+        return false, nil
+    end
+
+    local impactSpeed = math.sqrt(2 * gravity * dropHeight)
+    local riseEquivalent = math.max(profile.MaxRise, profile.Height)
+    local toleratedImpact = math.max(profile.JumpPower * 1.05, math.sqrt(2 * gravity * riseEquivalent) * 2.1)
+    if impactSpeed > toleratedImpact then
+        return false, nil
+    end
+
+    local landing = self:_standInfo(profile, toNode.pos, ignoreModel, profile.Height + dropHeight + profile.StepHeight + 12)
+    if not landing then
+        return false, nil
+    end
+    if math.abs(landing.floorY - toNode.floorY) > math.max(profile.StepHeight, profile.Root.Size.Y * 0.4) then
+        return false, nil
+    end
+
+    local samples = math.max(5, math.ceil(dist / math.max(1, profile.CellSize * 0.5)))
+    local sawLandingWindow = false
+    for i = 1, samples do
+        local alpha = i / samples
+        local probe = fromNode.pos:Lerp(toNode.pos, alpha)
+        local stand = self:_standInfo(profile, probe, ignoreModel, profile.Height + dropHeight + profile.StepHeight + 12)
+        if not stand then
+            if alpha > 0.9 then
+                return false, nil
+            end
+        else
+            if stand.floorY > fromNode.floorY + profile.StepHeight then
+                return false, nil
+            end
+            if stand.floorY < toNode.floorY - math.max(profile.MaxRise, profile.Height) * 0.5 then
+                return false, nil
+            end
+            if math.abs(stand.floorY - toNode.floorY) <= math.max(profile.StepHeight, profile.Root.Size.Y * 0.4) then
+                sawLandingWindow = true
+            end
+        end
+    end
+    if not sawLandingWindow then
+        return false, nil
+    end
+
+    local overlapsParams = self:_makeOverlapParams(ignoreModel and {ignoreModel} or {})
+    local boxSize = Vector3.new(profile.Radius * 2, profile.Height, profile.Radius * 2)
+    local halfHeight = profile.Height * 0.5
+    for i = 1, JUMP_SAMPLES - 1 do
+        local alpha = i / JUMP_SAMPLES
+        local point = Vector3.new(
+            fromNode.pos.X + delta.X * alpha,
+            fromNode.floorY + (toNode.floorY - fromNode.floorY) * alpha,
+            fromNode.pos.Z + delta.Z * alpha
+        )
+        local overlaps = Workspace:GetPartBoundsInBox(CFrame.new(point.X, point.Y + halfHeight, point.Z), boxSize, overlapsParams)
+        for _, part in ipairs(overlaps) do
+            if isBlockingPart(part) then
+                return false, nil
+            end
+        end
+    end
+
+    return true, "drop"
+end
+
 function Navigator:_jumpFeasible(profile, fromNode, toNode, ignoreModel: Model?)
     local delta = toNode.pos - fromNode.pos
     local dy = delta.Y
+    if dy < -profile.StepHeight then
+        return false, nil
+    end
+
     local dist = flat(delta).Magnitude
     if dist < profile.CellSize * 1.2 then
         return false, nil
     end
-    if dy > profile.MaxRise + 1 then
+    if dy > profile.MaxRise + profile.StepHeight then
         return false, nil
     end
 
@@ -507,6 +662,7 @@ function Navigator:_jumpFeasible(profile, fromNode, toNode, ignoreModel: Model?)
     if disc < 0 then
         return false, nil
     end
+
     local sqrtDisc = math.sqrt(disc)
     local t1 = (v0 - sqrtDisc) / g
     local t2 = (v0 + sqrtDisc) / g
@@ -521,13 +677,22 @@ function Navigator:_jumpFeasible(profile, fromNode, toNode, ignoreModel: Model?)
     end
 
     local dir = safeUnit(flat(delta))
+    local launchCheck = self:_standInfo(profile, fromNode.pos + dir * math.min(profile.CellSize * 0.5, math.max(0.75, dist * 0.25)), ignoreModel, profile.Height + profile.StepHeight + 8)
+    local landingCheck = self:_standInfo(profile, toNode.pos, ignoreModel, profile.Height + profile.MaxRise + profile.StepHeight + 12)
+    if not launchCheck or not landingCheck then
+        return false, nil
+    end
+    if math.abs(landingCheck.floorY - toNode.floorY) > math.max(profile.StepHeight, profile.Root.Size.Y * 0.4) then
+        return false, nil
+    end
+
     local overlapsParams = self:_makeOverlapParams(ignoreModel and {ignoreModel} or {})
     local boxSize = Vector3.new(profile.Radius * 2, profile.Height, profile.Radius * 2)
     local halfHeight = profile.Height * 0.5
 
     for i = 1, JUMP_SAMPLES - 1 do
-        local a = i / JUMP_SAMPLES
-        local t = airTime * a
+        local alpha = i / JUMP_SAMPLES
+        local t = airTime * alpha
         local point = fromNode.pos
             + dir * (requiredSpeed * t)
             + Vector3.new(0, v0 * t - 0.5 * g * t * t, 0)
@@ -539,42 +704,41 @@ function Navigator:_jumpFeasible(profile, fromNode, toNode, ignoreModel: Model?)
         end
     end
 
-    if dy > profile.StepHeight then
-        return true, "jump"
-    end
-    if dy < -profile.StepHeight then
-        return true, "drop"
-    end
     return true, "jump"
 end
 
 function Navigator:_groundDirect(profile, aNode, bNode, ignoreModel: Model?)
     local dist = flat(bNode.pos - aNode.pos).Magnitude
     local steps = math.max(2, math.ceil(dist / math.max(1, profile.CellSize * 0.5)))
-    local last = aNode
+    local lastFloorY = aNode.floorY
+    local extraHeight = profile.Height + math.abs(bNode.floorY - aNode.floorY) + profile.StepHeight + 12
+
     for i = 1, steps do
         local alpha = i / steps
         local probe = aNode.pos:Lerp(bNode.pos, alpha)
-        local node = self:_nearestWalkable(profile, probe, ignoreModel, 1)
-        if not node then
+        local stand = self:_standInfo(profile, probe, ignoreModel, extraHeight)
+        if not stand then
             return false
         end
-        if math.abs(node.floorY - last.floorY) > profile.StepHeight then
+        if math.abs(stand.floorY - lastFloorY) > profile.StepHeight then
             return false
         end
-        last = node
+        lastFloorY = stand.floorY
     end
     return true
 end
 
 function Navigator:_segment(profile, aNode, bNode, ignoreModel: Model?)
-    local dy = math.abs(bNode.floorY - aNode.floorY)
+    local rawDy = bNode.floorY - aNode.floorY
     local dist = flat(bNode.pos - aNode.pos).Magnitude
-    if dist <= profile.CellSize * 1.5 and dy <= profile.StepHeight then
+    if dist <= profile.CellSize * 1.5 and math.abs(rawDy) <= profile.StepHeight then
         return true, "walk"
     end
     if self:_groundDirect(profile, aNode, bNode, ignoreModel) then
         return true, "walk"
+    end
+    if rawDy < -profile.StepHeight then
+        return self:_dropFeasible(profile, aNode, bNode, ignoreModel)
     end
     return self:_jumpFeasible(profile, aNode, bNode, ignoreModel)
 end
@@ -588,18 +752,26 @@ end
 
 function Navigator:_buildNeighbors(profile, node, goalNode, ignoreModel: Model?)
     local out = {}
+
+    local function edgeCost(other, action, costMul)
+        local dy = other.floorY - node.floorY
+        local dist = flat(other.pos - node.pos).Magnitude * (costMul or 1)
+        if action == "drop" then
+            return dist * (1.25 + math.max(0, -dy) / math.max(profile.MaxRise, profile.Height))
+        end
+        if action == "jump" then
+            return dist * 1.12 + math.max(0, dy) * 0.35
+        end
+        return dist + math.abs(dy) * 0.25
+    end
+
     for _, item in ipairs(self:_neighborOffsets()) do
         local dx, dz, costMul = item[1], item[2], item[3]
         local other = self:_getNode(profile, node.cx + dx, node.cz + dz, ignoreModel)
         if other.walkable then
-            local dy = other.floorY - node.floorY
-            if math.abs(dy) <= profile.StepHeight then
-                table.insert(out, {node = other, cost = profile.CellSize * costMul + math.abs(dy) * 0.25, action = "walk"})
-            else
-                local ok, action = self:_jumpFeasible(profile, node, other, ignoreModel)
-                if ok then
-                    table.insert(out, {node = other, cost = flat(other.pos - node.pos).Magnitude * 1.1, action = action})
-                end
+            local ok, action = self:_segment(profile, node, other, ignoreModel)
+            if ok then
+                table.insert(out, {node = other, cost = edgeCost(other, action, costMul), action = action})
             end
         end
     end
@@ -615,9 +787,9 @@ function Navigator:_buildNeighbors(profile, node, goalNode, ignoreModel: Model?)
             local nz = node.cz + dir.Y * step
             local other = self:_getNode(profile, nx, nz, ignoreModel)
             if other.walkable then
-                local ok, action = self:_jumpFeasible(profile, node, other, ignoreModel)
-                if ok then
-                    table.insert(out, {node = other, cost = flat(other.pos - node.pos).Magnitude * 1.05, action = action})
+                local ok, action = self:_segment(profile, node, other, ignoreModel)
+                if ok and action ~= "walk" then
+                    table.insert(out, {node = other, cost = edgeCost(other, action, 1), action = action})
                 end
             end
         end
@@ -626,14 +798,14 @@ function Navigator:_buildNeighbors(profile, node, goalNode, ignoreModel: Model?)
     if goalNode and goalNode.key ~= node.key then
         local ok, action = self:_segment(profile, node, goalNode, ignoreModel)
         if ok then
-            table.insert(out, {node = goalNode, cost = flat(goalNode.pos - node.pos).Magnitude, action = action or "walk"})
+            table.insert(out, {node = goalNode, cost = edgeCost(goalNode, action or "walk", 1), action = action or "walk"})
         end
     end
 
     return out
 end
 
-function Navigator:_reconstruct(cameFrom, refs, endKey: string, goalPos: Vector3?)
+function Navigator:_reconstruct(cameFrom, refs, endKey: string)
     local ordered = {}
     local cursor = endKey
     while cursor do
@@ -643,14 +815,9 @@ function Navigator:_reconstruct(cameFrom, refs, endKey: string, goalPos: Vector3
         table.insert(ordered, 1, {
             Position = n.pos,
             Action = edge and edge.action or "walk",
+            FloorY = n.floorY,
         })
         cursor = edge and edge.from or nil
-    end
-    if goalPos and #ordered > 0 then
-        local last = ordered[#ordered]
-        if (last.Position - goalPos).Magnitude > 2 then
-            table.insert(ordered, {Position = goalPos, Action = "walk"})
-        end
     end
     return ordered
 end
@@ -677,7 +844,11 @@ function Navigator:_smooth(profile, waypoints, ignoreModel: Model?)
                 end
             end
         end
-        table.insert(out, {Position = waypoints[bestJ].Position, Action = bestAction})
+        table.insert(out, {
+            Position = waypoints[bestJ].Position,
+            Action = bestAction,
+            FloorY = waypoints[bestJ].FloorY,
+        })
         i = bestJ
     end
     return out
@@ -726,7 +897,7 @@ function Navigator:Plan(startPos: Vector3, goalPos: Vector3, humanoid: Humanoid,
             if currentKey ~= goalNode.key and not cameFrom[goalNode.key] then
                 cameFrom[goalNode.key] = {from = currentKey, action = "walk"}
             end
-            local raw = self:_reconstruct(cameFrom, refs, goalNode.key, goalPos)
+            local raw = self:_reconstruct(cameFrom, refs, goalNode.key)
             return {
                 Status = "Success",
                 Waypoints = self:_smooth(profile, raw, ignoreModel),
@@ -783,6 +954,117 @@ function Navigator:_obstacleAhead(profile, moveDir: Vector3, ignoreModel: Model?
     )
 end
 
+function Navigator:_supportAhead(profile, moveDir: Vector3, ignoreModel: Model?, distance: number?)
+    local dir = safeUnit(moveDir)
+    if dir.Magnitude < 0.01 then
+        return nil
+    end
+    local probeDistance = distance or (profile.Radius + profile.CellSize * 0.5)
+    local probe = profile.Root.Position + dir * probeDistance
+    return self:_standInfo(profile, probe, ignoreModel, profile.Height + profile.MaxRise + profile.StepHeight + 12)
+end
+
+function Navigator:_voidAhead(profile, moveDir: Vector3, ignoreModel: Model?)
+    local dir = safeUnit(moveDir)
+    if dir.Magnitude < 0.01 then
+        return false
+    end
+
+    local current = self:_standInfo(profile, profile.Root.Position, ignoreModel, profile.Height + profile.StepHeight + 8)
+    local currentFloorY = current and current.floorY or profile.Root.Position.Y
+    local distances = {
+        profile.Radius + profile.Root.Size.Z * 0.35,
+        profile.Radius + profile.CellSize * 0.55,
+        profile.Radius + profile.CellSize,
+    }
+
+    for _, sampleDistance in ipairs(distances) do
+        local stand = self:_supportAhead(profile, dir, ignoreModel, sampleDistance)
+        if not stand then
+            return true
+        end
+        if stand.floorY < currentFloorY - math.max(profile.MaxRise * 1.35, profile.Height) then
+            return true
+        end
+    end
+    return false
+end
+
+function Navigator:_forwardLanding(profile, moveDir: Vector3, ignoreModel: Model?)
+    local dir = safeUnit(moveDir)
+    if dir.Magnitude < 0.01 then
+        return nil
+    end
+
+    local maxSteps = math.max(2, math.ceil(profile.JumpReach / math.max(1, profile.CellSize * 0.5)))
+    for step = 2, maxSteps do
+        local probe = profile.Root.Position + dir * (step * profile.CellSize * 0.5)
+        local stand = self:_standInfo(profile, probe, ignoreModel, profile.Height + profile.MaxRise + profile.StepHeight + 24)
+        if stand then
+            local node = self:_nearestWalkable(profile, stand.pos, ignoreModel, 1)
+            if node then
+                return node
+            end
+        end
+    end
+    return nil
+end
+
+function Navigator:_dropStillSafe(profile, waypoint, ignoreModel: Model?)
+    if not waypoint then
+        return false
+    end
+    local currentNode = self:_nearestWalkable(profile, profile.Root.Position, ignoreModel, 1)
+    local landingNode = self:_nearestWalkable(profile, waypoint.Position, ignoreModel, 1)
+    if not currentNode or not landingNode then
+        return false
+    end
+    local ok, action = self:_dropFeasible(profile, currentNode, landingNode, ignoreModel)
+    return ok and action == "drop"
+end
+
+function Navigator:_shouldAutoJump(profile, moveDir: Vector3, waypoint, ignoreModel: Model?)
+    local dir = safeUnit(moveDir)
+    if dir.Magnitude < 0.01 then
+        return false
+    end
+
+    local currentNode = self:_nearestWalkable(profile, profile.Root.Position, ignoreModel, 1)
+    local waypointNode = waypoint and self:_nearestWalkable(profile, waypoint.Position, ignoreModel, 1) or nil
+    local immediateSupport = self:_supportAhead(profile, dir, ignoreModel, profile.Radius + profile.CellSize * 0.45)
+
+    if currentNode and immediateSupport then
+        local rise = immediateSupport.floorY - currentNode.floorY
+        if rise > profile.StepHeight and rise <= profile.MaxRise + profile.StepHeight then
+            return true
+        end
+    end
+
+    if waypoint and waypoint.Action == "jump" and currentNode and waypointNode then
+        local ok = self:_jumpFeasible(profile, currentNode, waypointNode, ignoreModel)
+        if ok then
+            local gapAhead = self:_supportAhead(profile, dir, ignoreModel, profile.Radius + profile.CellSize * 0.65) == nil
+            local targetDistance = flat(waypointNode.pos - profile.Root.Position).Magnitude
+            if gapAhead or targetDistance <= math.max(profile.JumpReach * 0.65, profile.CellSize * 1.35) or waypointNode.floorY > currentNode.floorY + profile.StepHeight then
+                return true
+            end
+        end
+    end
+
+    local gapAhead = self:_supportAhead(profile, dir, ignoreModel, profile.Radius + profile.CellSize * 0.65) == nil
+    if gapAhead and currentNode then
+        local landingNode = waypointNode or self:_forwardLanding(profile, dir, ignoreModel)
+        if landingNode then
+            local ok = self:_jumpFeasible(profile, currentNode, landingNode, ignoreModel)
+            if ok then
+                return true
+            end
+        end
+    end
+
+    return self:_microHop(profile, dir, ignoreModel)
+end
+
 function Navigator:_microHop(profile, moveDir: Vector3, ignoreModel: Model?)
     local dir = safeUnit(moveDir)
     if dir.Magnitude < 0.01 then
@@ -809,16 +1091,22 @@ function Navigator:_lateral(profile, moveDir: Vector3, ignoreModel: Model?)
     if dir.Magnitude < 0.01 then
         return Vector3.zero
     end
+
     local left = Vector3.new(-dir.Z, 0, dir.X)
     local right = Vector3.new(dir.Z, 0, -dir.X)
     local params = self:_makeRayParams(ignoreModel and {ignoreModel} or {})
     local origin = profile.Root.Position + Vector3.new(0, math.max(1.5, profile.Height * 0.35), 0)
     local leftHit = Workspace:Raycast(origin, left * profile.ProbeDistance, params)
     local rightHit = Workspace:Raycast(origin, right * profile.ProbeDistance, params)
-    if leftHit and not rightHit then return right end
-    if rightHit and not leftHit then return left end
-    if not leftHit then return left end
-    if not rightHit then return right end
+    local leftSupport = self:_supportAhead(profile, left, ignoreModel, profile.Radius + profile.CellSize * 0.5)
+    local rightSupport = self:_supportAhead(profile, right, ignoreModel, profile.Radius + profile.CellSize * 0.5)
+
+    if leftHit and not rightHit and rightSupport then return right end
+    if rightHit and not leftHit and leftSupport then return left end
+    if leftSupport and not rightSupport then return left end
+    if rightSupport and not leftSupport then return right end
+    if not leftHit and leftSupport then return left end
+    if not rightHit and rightSupport then return right end
     return -dir
 end
 
@@ -907,11 +1195,22 @@ function Navigator:CreateMover(humanoid: Humanoid)
         return self.Path[self.PathIndex]
     end
 
+    function mover:_isGrounded()
+        return self.Humanoid.FloorMaterial ~= Enum.Material.Air and self.Root.AssemblyLinearVelocity.Y <= 1
+    end
+
     function mover:_advance(profile)
         local wp = self:_currentWaypoint()
         if not wp then return end
-        local dist = flat(wp.Position - self.Root.Position).Magnitude
-        if dist <= math.max(profile.ReachedRadius * 0.8, profile.CellSize * 0.7) then
+        local flatDistance = flat(wp.Position - self.Root.Position).Magnitude
+        local verticalDistance = math.abs((wp.FloorY or wp.Position.Y) - self.Root.Position.Y)
+        local reached = flatDistance <= math.max(profile.ReachedRadius * 0.8, profile.CellSize * 0.7)
+
+        if wp.Action == "jump" or wp.Action == "drop" then
+            reached = reached and verticalDistance <= math.max(profile.StepHeight, self.Root.Size.Y * 0.75)
+        end
+
+        if reached then
             self.PathIndex += 1
             if self.PathIndex > #self.Path then
                 self.PathIndex = #self.Path
@@ -989,24 +1288,40 @@ function Navigator:CreateMover(humanoid: Humanoid)
         self:_advance(profile)
         local wp = self:_currentWaypoint()
         local moveDir = wp and safeUnit(flat(wp.Position - self.Root.Position)) or safeUnit(flat(self.Goal - self.Root.Position))
+        local grounded = self:_isGrounded()
 
         if moveDir.Magnitude > 0.01 then
-            local hit = self.Navigator:_obstacleAhead(profile, moveDir, self.Character)
-            if hit then
-                if self.Navigator:_microHop(profile, moveDir, self.Character) then
+            local obstacleHit = self.Navigator:_obstacleAhead(profile, moveDir, self.Character)
+            if obstacleHit then
+                if grounded and self.Navigator:_shouldAutoJump(profile, moveDir, wp, self.Character) then
                     self.Humanoid.Jump = true
                 else
                     moveDir = self.Navigator:_lateral(profile, moveDir, self.Character)
                     self:_requestPlan(true)
                 end
+            elseif (not wp or wp.Action ~= "drop") and self.Navigator:_voidAhead(profile, moveDir, self.Character) then
+                if grounded and self.Navigator:_shouldAutoJump(profile, moveDir, wp, self.Character) then
+                    self.Humanoid.Jump = true
+                else
+                    self.Humanoid:Move(Vector3.zero, false)
+                    self:_requestPlan(true)
+                    return
+                end
             end
         end
 
-        if wp and (wp.Action == "jump" or wp.Action == "drop") then
-            local dist = flat(wp.Position - self.Root.Position).Magnitude
-            if dist <= math.max(profile.CellSize * 1.15, profile.ReachedRadius) then
+        if wp then
+            if wp.Action == "drop" then
+                if not self.Navigator:_dropStillSafe(profile, wp, self.Character) then
+                    self.Humanoid:Move(Vector3.zero, false)
+                    self:_requestPlan(true)
+                    return
+                end
+            elseif grounded and self.Navigator:_shouldAutoJump(profile, moveDir, wp, self.Character) then
                 self.Humanoid.Jump = true
             end
+        elseif grounded and self.Navigator:_shouldAutoJump(profile, moveDir, nil, self.Character) then
+            self.Humanoid.Jump = true
         end
 
         self:_updateFacing(profile, moveDir)
