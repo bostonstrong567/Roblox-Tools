@@ -1416,6 +1416,8 @@ function Navigator:CreateMover(humanoid)
         self.Navigator._activeMovers[self] = nil
     end
 
+    mover._planQueued = false
+
     function mover:_requestPlan()
         if not self.Goal or not self.Active then
             return
@@ -1427,28 +1429,40 @@ function Navigator:CreateMover(humanoid)
         if t - self.LastPlanAt < 1 then
             return
         end
-        self.Planning = true
-        self.LastPlanAt = t
-        self.PlanTicket += 1
-        local myTicket = self.PlanTicket
-        local startPos = self.Root.Position
-        local goalPos = self.Goal
-        task.defer(function()
-            local result = self.Navigator:Plan(startPos, goalPos, self.Humanoid, self.Character)
-            if not self.Active or myTicket ~= self.PlanTicket then
-                self.Planning = false
-                return
-            end
-            self.Planning = false
-            if result.Status == "Success" and #result.Waypoints > 0 then
-                self.Path = result.Waypoints
-                self.PathIndex = math.min(2, #self.Path)
-            else
-                self.Path = nil
-                self.PathIndex = 1
-            end
-        end)
+        if self._planQueued then
+            return
+        end
+        self._planQueued = true
     end
+
+    -- Separate plan loop — runs independently, never blocks _step/RenderStep
+    task.spawn(function()
+        while mover.Active do
+            if mover._planQueued and mover.Goal and not mover.Planning then
+                mover._planQueued = false
+                mover.Planning = true
+                mover.LastPlanAt = nowS()
+                mover.PlanTicket += 1
+                local myTicket = mover.PlanTicket
+                local startPos = mover.Root.Position
+                local goalPos = mover.Goal
+
+                local result = mover.Navigator:Plan(startPos, goalPos, mover.Humanoid, mover.Character)
+
+                if mover.Active and myTicket == mover.PlanTicket then
+                    if result.Status == "Success" and #result.Waypoints > 0 then
+                        mover.Path = result.Waypoints
+                        mover.PathIndex = math.min(2, #mover.Path)
+                    else
+                        mover.Path = nil
+                        mover.PathIndex = 1
+                    end
+                end
+                mover.Planning = false
+            end
+            RunService.Heartbeat:Wait()
+        end
+    end)
 
     function mover:_currentWaypoint()
         return self.Path and self.Path[self.PathIndex] or nil
@@ -1763,9 +1777,7 @@ function Navigator:CreateMover(humanoid)
         self:_observeSafety(profile)
 
         if self:_needPlan(profile, dt) then
-            local planT0 = nowS()
             self:_requestPlan()
-            self._perf.planMs = (nowS() - planT0) * 1000
         end
 
         self:_advance(profile)
