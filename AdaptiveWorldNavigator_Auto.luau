@@ -23,7 +23,7 @@ Navigator.__index = Navigator
 
 local STEP_SIGNAL = RunService.PreSimulation or RunService.Heartbeat
 
-local SEARCH_NODE_LIMIT = 16000
+local SEARCH_NODE_LIMIT = 6000
 local CLEARANCE_PAD = 0.15
 local RAY_MARGIN_Y = 256
 local RAY_DEPTH = 900
@@ -1480,11 +1480,13 @@ function Navigator:CreateMover(humanoid)
         local softLeft = safeUnit(baseDir + left * 0.35)
         local softRight = safeUnit(baseDir + right * 0.35)
 
-        local dirs = {baseDir, softLeft, softRight, left, right}
+        local dirs = {baseDir, softLeft, softRight}
         local unique = {}
         local out = {}
-        local currentNode = self.Navigator:_nearestWalkable(profile, self.Root.Position, self.Character, 2)
-        local preferredNode = wp and self.Navigator:_nearestWalkable(profile, wp.Position, self.Character, 2) or nil
+        local currentNode = self.Navigator:_nearestWalkable(profile, self.Root.Position, self.Character, 1)
+        local preferredNode = wp and self.Navigator:_nearestWalkable(profile, wp.Position, self.Character, 1) or nil
+        local needsJump = wp and (wp.Action == "jump" or wp.Action == "drop")
+        local groundFailed = false
 
         for _, dir in ipairs(dirs) do
             local u = safeUnit(dir)
@@ -1495,18 +1497,19 @@ function Navigator:CreateMover(humanoid)
                     local candidate = self.Navigator:_groundTrajectory(profile, self.Root.Position, u, self.Goal, self.Character)
                     if candidate then
                         table.insert(out, candidate)
-                    end
-                    if state.Grounded and currentNode then
-                        local jumpCandidate = self.Navigator:_jumpTrajectory(profile, self.Root.Position, currentNode, u, preferredNode, self.Goal, self.Character)
-                        if jumpCandidate then
-                            table.insert(out, jumpCandidate)
-                        end
+                    else
+                        groundFailed = true
                     end
                 end
             end
         end
 
-        if state.Grounded and currentNode then
+        -- Only evaluate jump/drop when the path actually requires it or ground movement failed
+        if state.Grounded and currentNode and (needsJump or groundFailed) then
+            local jumpCandidate = self.Navigator:_jumpTrajectory(profile, self.Root.Position, currentNode, baseDir, preferredNode, self.Goal, self.Character)
+            if jumpCandidate then
+                table.insert(out, jumpCandidate)
+            end
             local dropCandidate = self.Navigator:_dropTrajectory(profile, self.Root.Position, currentNode, preferredNode, self.Goal, self.Character)
             if dropCandidate then
                 table.insert(out, dropCandidate)
