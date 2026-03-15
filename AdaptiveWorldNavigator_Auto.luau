@@ -1639,8 +1639,18 @@ function Navigator:CreateMover(humanoid)
     end
 
     mover._stepReason = "init"
+    mover._perf = {
+        stepMs = 0,
+        candidateMs = 0,
+        planMs = 0,
+        stepCount = 0,
+        slowFrames = 0,
+        candidateCount = 0,
+    }
 
     function mover:_step(dt)
+        local stepT0 = nowS()
+
         if not self.Active then self._stepReason = "inactive" return end
         if not self.Root.Parent or self.Humanoid.Health <= 0 then
             self._stepReason = "dead/noroot"
@@ -1689,28 +1699,38 @@ function Navigator:CreateMover(humanoid)
         self:_observeSafety(profile)
 
         if self:_needPlan(profile, dt) then
+            local planT0 = nowS()
             self:_requestPlan(true)
+            self._perf.planMs = (nowS() - planT0) * 1000
         end
 
         self:_advance(profile)
+
+        local candT0 = nowS()
         local chosen = self:_chooseCandidate(profile)
+        local candMs = (nowS() - candT0) * 1000
+        self._perf.candidateMs = candMs
+
         if not chosen then
             self._stepReason = "no_candidate"
             self.Humanoid:Move(Vector3.zero, false)
             self:_requestPlan(true)
-            return
-        end
-
-        if chosen.confidence < 0.12 then
+        elseif chosen.confidence < 0.12 then
             self._stepReason = "low_confidence:" .. string.format("%.2f", chosen.confidence)
             self.Navigator:RecordHazard(self.Root.Position, profile.DynamicRadius * 0.35, 0.75, math.max(profile.ReplanInterval * 16, 2.5))
             self.Humanoid:Move(Vector3.zero, false)
             self:_requestPlan(true)
-            return
+        else
+            self._stepReason = "moving:" .. chosen.kind .. ":" .. string.format("%.2f", chosen.confidence)
+            self:_applyCandidate(profile, chosen)
         end
 
-        self._stepReason = "moving:" .. chosen.kind .. ":" .. string.format("%.2f", chosen.confidence)
-        self:_applyCandidate(profile, chosen)
+        local stepMs = (nowS() - stepT0) * 1000
+        self._perf.stepMs = stepMs
+        self._perf.stepCount += 1
+        if stepMs > 8 then
+            self._perf.slowFrames += 1
+        end
     end
 
     mover.StateConnections = {
@@ -1787,7 +1807,7 @@ function Navigator:CreateMover(humanoid)
             mover:_step(dt)
         end)
         if not ok then
-            warn("[AdaptiveWorldNavigator_Ultimate] mover error:", err)
+            -- error logged silently; client reads _stepReason
         end
     end)
     mover.Connection = {
