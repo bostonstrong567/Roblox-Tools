@@ -1420,18 +1420,25 @@ function Navigator:CreateMover(humanoid)
         if not self.Goal or not self.Active then
             return
         end
-        if self.Planning and not force then
+        -- Don't replan if already planning
+        if self.Planning then
+            return
+        end
+        -- Throttle: don't replan more than once per second
+        local t = nowS()
+        if not force and t - self.LastPlanAt < 1 then
             return
         end
         self.Planning = true
-        self.LastPlanAt = nowS()
+        self.LastPlanAt = t
         self.PlanTicket += 1
         local myTicket = self.PlanTicket
         local startPos = self.Root.Position
         local goalPos = self.Goal
-        task.spawn(function()
+        task.defer(function()
             local result = self.Navigator:Plan(startPos, goalPos, self.Humanoid, self.Character)
             if not self.Active or myTicket ~= self.PlanTicket then
+                self.Planning = false
                 return
             end
             self.Planning = false
