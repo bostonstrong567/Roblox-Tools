@@ -423,18 +423,20 @@ function Navigator:Start()
         end
     end))
 
-    -- Background scan: spread the initial GetDescendants over multiple frames
+    -- Background scan: time-budgeted, not count-based
     task.spawn(function()
         local descendants = Workspace:GetDescendants()
-        for i, inst in ipairs(descendants) do
+        local scanT0 = nowS()
+        for _, inst in ipairs(descendants) do
             if inst:IsA("BasePart") then
                 self:_touchBounds(inst)
                 if (not inst.Anchored) or humanoidAncestor(inst) then
                     self:_registerDynamic(inst)
                 end
             end
-            if i % 200 == 0 then
+            if nowS() - scanT0 >= 0.003 then
                 RunService.Heartbeat:Wait()
+                scanT0 = nowS()
             end
         end
     end)
@@ -1062,7 +1064,7 @@ function Navigator:Plan(startPos, goalPos, humanoid, ignoreModel)
     gScore[startNode.key] = 0
     open:push(startNode.key, flat(goalNode.pos - startNode.pos).Magnitude)
 
-    local YIELD_BUDGET = 2
+    local BATCH_TIME_BUDGET = 0.003 -- 3ms max per batch
     local batchT0 = nowS()
 
     while not open:isEmpty() and expanded < SEARCH_NODE_LIMIT do
@@ -1073,9 +1075,10 @@ function Navigator:Plan(startPos, goalPos, humanoid, ignoreModel)
         closed[currentKey] = true
         expanded += 1
 
-        if expanded % YIELD_BUDGET == 0 then
-            local batchMs = (nowS() - batchT0) * 1000
-            -- Store worst batch time for perf reporting
+        -- Yield when time budget is exceeded, not after fixed node count
+        local elapsed = nowS() - batchT0
+        if elapsed >= BATCH_TIME_BUDGET then
+            local batchMs = elapsed * 1000
             if self._planBatchWorst == nil or batchMs > self._planBatchWorst then
                 self._planBatchWorst = batchMs
             end
@@ -1496,33 +1499,38 @@ function Navigator:CreateMover(humanoid)
         self._planQueued = true
     end
 
-    -- Separate plan loop — runs independently, never blocks _step/RenderStep
-    task.spawn(function()
-        while mover.Active do
-            if mover._planQueued and mover.Goal and not mover.Planning then
-                mover._planQueued = false
-                mover.Planning = true
-                mover.LastPlanAt = nowS()
-                mover.PlanTicket += 1
-                local myTicket = mover.PlanTicket
-                local startPos = mover.Root.Position
-                local goalPos = mover.Goal
-
-                local result = mover.Navigator:Plan(startPos, goalPos, mover.Humanoid, mover.Character)
-
-                if mover.Active and myTicket == mover.PlanTicket then
-                    if result.Status == "Success" and #result.Waypoints > 0 then
-                        mover.Path = result.Waypoints
-                        mover.PathIndex = math.min(2, #mover.Path)
-                    else
-                        mover.Path = nil
-                        mover.PathIndex = 1
-                    end
-                end
-                mover.Planning = false
-            end
-            RunService.Heartbeat:Wait()
+    -- Plan runner — checks for queued plans on PreSimulation (runs before physics, after render)
+    local planCon
+    planCon = (RunService.PreSimulation or RunService.Heartbeat):Connect(function()
+        if not mover.Active then
+            planCon:Disconnect()
+            return
         end
+        if not mover._planQueued or not mover.Goal or mover.Planning then
+            return
+        end
+        mover._planQueued = false
+        mover.Planning = true
+        mover.LastPlanAt = nowS()
+        mover.PlanTicket += 1
+        local myTicket = mover.PlanTicket
+        local startPos = mover.Root.Position
+        local goalPos = mover.Goal
+
+        -- Run plan in a coroutine so it can yield with Heartbeat:Wait() inside Plan()
+        task.spawn(function()
+            local result = mover.Navigator:Plan(startPos, goalPos, mover.Humanoid, mover.Character)
+            if mover.Active and myTicket == mover.PlanTicket then
+                if result.Status == "Success" and #result.Waypoints > 0 then
+                    mover.Path = result.Waypoints
+                    mover.PathIndex = math.min(2, #mover.Path)
+                else
+                    mover.Path = nil
+                    mover.PathIndex = 1
+                end
+            end
+            mover.Planning = false
+        end)
     end)
 
     function mover:_currentWaypoint()
