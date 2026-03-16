@@ -1456,7 +1456,6 @@ function Navigator:CreateMover(humanoid)
     end
 
     -- Separate plan loop — runs independently, never blocks _step/RenderStep
-    mover._perf.planBatchMs = 0
     task.spawn(function()
         while mover.Active do
             if mover._planQueued and mover.Goal and not mover.Planning then
