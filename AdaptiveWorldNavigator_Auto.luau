@@ -895,14 +895,24 @@ function Navigator:_segment(profile, aNode, bNode, ignoreModel)
     local absDy = math.abs(dy)
     local dist = flat(bNode.pos - aNode.pos).Magnitude
 
-    -- Adjacent cells: humanoid can walk up ledges up to StepHeight * 2
-    -- and can walk down small drops without needing a "drop" action
-    local walkableRise = math.max(profile.StepHeight * 2, profile.Height * 0.4)
-    if dist <= profile.CellSize * 1.35 and absDy <= walkableRise then
-        -- Swept collision check to make sure nothing blocks the path
-        local hit = self:_sweptCollision(profile, aNode.pos, bNode.pos, ignoreModel)
-        if not hit then
-            return true, {action = "walk", confidence = math.min(aNode.support or 1, bNode.support or 1)}
+    -- Small height difference: definitely walkable
+    if dist <= profile.CellSize * 1.35 and absDy <= profile.StepHeight then
+        return true, {action = "walk", confidence = math.min(aNode.support or 1, bNode.support or 1)}
+    end
+
+    -- Larger height difference: check if there's a steppable path between them
+    -- Sample the midpoint to see if intermediate ground connects them
+    if dist <= profile.CellSize * 1.5 and absDy > profile.StepHeight then
+        local midPos = aNode.pos:Lerp(bNode.pos, 0.5)
+        local midHit = self:_floorHit(profile, midPos, ignoreModel, profile.Height + absDy + profile.StepHeight + 8)
+        if midHit then
+            local midY = midHit.Position.Y
+            local stepA = math.abs(midY - aNode.floorY)
+            local stepB = math.abs(midY - bNode.floorY)
+            -- If each half-step is within StepHeight, it's walkable stairs/terrain
+            if stepA <= profile.StepHeight * 1.5 and stepB <= profile.StepHeight * 1.5 then
+                return true, {action = "walk", confidence = math.min(aNode.support or 1, bNode.support or 1)}
+            end
         end
     end
 
@@ -911,7 +921,7 @@ function Navigator:_segment(profile, aNode, bNode, ignoreModel)
         return true, walkInfo
     end
 
-    if dy < -walkableRise then
+    if dy < -profile.StepHeight then
         return self:_dropFeasible(profile, aNode, bNode, ignoreModel)
     end
     return self:_jumpFeasible(profile, aNode, bNode, ignoreModel)
@@ -1148,19 +1158,41 @@ function Navigator:_voidAhead(profile, moveDir, ignoreModel)
     if dir.Magnitude < 0.01 then
         return false
     end
-    local probePos = profile.Root.Position + dir * (profile.Radius + profile.CellSize * 0.55)
-    local hit = Workspace:Raycast(
-        Vector3.new(probePos.X, profile.Root.Position.Y + 2, probePos.Z),
-        Vector3.new(0, -(profile.Height + profile.MaxRise + 8), 0),
-        self:_makeRayParams(ignoreModel and {ignoreModel} or {})
-    )
-    if not hit then
-        return true
+    local params = self:_getRayParams(ignoreModel and {ignoreModel} or {})
+    local rootY = profile.Root.Position.Y
+    local rayDown = Vector3.new(0, -(profile.Height + profile.MaxRise + 8), 0)
+
+    -- Check 3 distances: close, medium, far
+    -- If ANY probe finds ground at a safe height, it's not a real void (just a crack/gap)
+    local probes = {
+        profile.Radius + profile.CellSize * 0.3,   -- close (right at feet)
+        profile.Radius + profile.CellSize * 0.6,   -- medium
+        profile.Radius + profile.CellSize * 1.0,   -- far (past small gaps)
+    }
+
+    local foundGround = false
+    local allVoid = true
+    for _, dist in ipairs(probes) do
+        local probePos = profile.Root.Position + dir * dist
+        local hit = Workspace:Raycast(
+            Vector3.new(probePos.X, rootY + 2, probePos.Z),
+            rayDown, params
+        )
+        if hit and rootY - hit.Position.Y <= profile.SafeDrop then
+            foundGround = true
+            allVoid = false
+            break
+        end
+        if hit then
+            allVoid = false
+        end
     end
-    if profile.Root.Position.Y - hit.Position.Y > profile.SafeDrop then
-        return true
+
+    -- Only report void if ALL probes found nothing or unsafe drops
+    if foundGround then
+        return false
     end
-    return false
+    return allVoid or not foundGround
 end
 
 function Navigator:_lateral(profile, moveDir, ignoreModel)
