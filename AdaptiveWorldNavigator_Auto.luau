@@ -23,7 +23,7 @@ Navigator.__index = Navigator
 
 local STEP_SIGNAL = RunService.PreSimulation or RunService.Heartbeat
 
-local SEARCH_NODE_LIMIT = 6000
+local SEARCH_NODE_LIMIT = 2000
 local CLEARANCE_PAD = 0.15
 local RAY_MARGIN_Y = 256
 local RAY_DEPTH = 900
@@ -438,7 +438,11 @@ function Navigator:Start()
         end
     end)
 
+    local lastHousekeep = 0
     table.insert(self._cons, STEP_SIGNAL:Connect(function()
+        local t = nowS()
+        if t - lastHousekeep < 2 then return end
+        lastHousekeep = t
         self:_pruneDirtyRegions()
         self:_pruneHazards()
         self:_processDynamicParts()
@@ -1038,7 +1042,7 @@ function Navigator:Plan(startPos, goalPos, humanoid, ignoreModel)
     gScore[startNode.key] = 0
     open:push(startNode.key, flat(goalNode.pos - startNode.pos).Magnitude)
 
-    local YIELD_BUDGET = 40
+    local YIELD_BUDGET = 8
 
     while not open:isEmpty() and expanded < SEARCH_NODE_LIMIT do
         local currentKey = open:pop()
@@ -1066,7 +1070,7 @@ function Navigator:Plan(startPos, goalPos, humanoid, ignoreModel)
             local raw = self:_reconstruct(cameFrom, refs, goalNode.key)
             return {
                 Status = "Success",
-                Waypoints = self:_smooth(profile, raw, ignoreModel),
+                Waypoints = raw,
                 Expanded = expanded,
             }
         end
@@ -1769,11 +1773,8 @@ function Navigator:CreateMover(humanoid)
             return
         end
 
-        local t = nowS()
-        if t - self.LastDynamicAt >= profile.ReplanInterval then
-            self.LastDynamicAt = t
-            self.Navigator:InvalidateRadius(self.Root.Position, profile.DynamicRadius)
-        end
+        -- Cache stays valid unless parts physically change (DescendantAdded/Removing)
+        -- No periodic radius invalidation — static maps don't need it
 
         local traveled = (self.Root.Position - self.LastPosition).Magnitude
         if traveled < STUCK_EPS and state.Grounded then
