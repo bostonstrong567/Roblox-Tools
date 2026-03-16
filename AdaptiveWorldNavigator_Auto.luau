@@ -939,19 +939,15 @@ function Navigator:_buildNeighbors(profile, node, goalNode, ignoreModel)
         end
     end
 
-    local jumpCells = clamp(math.floor(profile.JumpReach / profile.CellSize), 2, 6)
-    local dirs = {
+    local jumpDirs = {
         Vector2.new(1, 0), Vector2.new(-1, 0), Vector2.new(0, 1), Vector2.new(0, -1),
-        Vector2.new(1, 1), Vector2.new(1, -1), Vector2.new(-1, 1), Vector2.new(-1, -1),
     }
-    for _, dir in ipairs(dirs) do
-        for step = 2, jumpCells do
-            local other = self:_getNode(profile, node.cx + dir.X * step, node.cz + dir.Y * step, ignoreModel)
-            if other.walkable then
-                local ok, info = self:_segment(profile, node, other, ignoreModel)
-                if ok and info.action ~= "walk" then
-                    table.insert(out, {node = other, cost = edgeCost(other, info, 1), info = info})
-                end
+    for _, dir in ipairs(jumpDirs) do
+        local other = self:_getNode(profile, node.cx + dir.X * 2, node.cz + dir.Y * 2, ignoreModel)
+        if other.walkable then
+            local ok, info = self:_segment(profile, node, other, ignoreModel)
+            if ok and info.action ~= "walk" then
+                table.insert(out, {node = other, cost = edgeCost(other, info, 1), info = info})
             end
         end
     end
@@ -1043,7 +1039,7 @@ function Navigator:Plan(startPos, goalPos, humanoid, ignoreModel)
     gScore[startNode.key] = 0
     open:push(startNode.key, flat(goalNode.pos - startNode.pos).Magnitude)
 
-    local YIELD_BUDGET = 8
+    local YIELD_BUDGET = 2
     local batchT0 = nowS()
 
     while not open:isEmpty() and expanded < SEARCH_NODE_LIMIT do
