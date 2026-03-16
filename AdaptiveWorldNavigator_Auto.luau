@@ -659,20 +659,25 @@ function Navigator:_computeNode(profile, cx, cz, ignoreModel)
         floorY = -HUGE,
         normal = Vector3.yAxis,
         walkable = false,
-        support = 0,
+        support = 1,
         computedAt = nowS(),
     }
 
-    local stand = self:_standInfo(profile, center, ignoreModel, profile.Height + profile.StepHeight + 12)
-    if not stand then
+    -- Lightweight: just floor hit + clearance check (2 ops instead of 7)
+    local hit = self:_floorHit(profile, center, ignoreModel, profile.Height + profile.StepHeight + 12)
+    if not hit then
+        return node
+    end
+    local floorPos = Vector3.new(center.X, hit.Position.Y, center.Z)
+    if not self:_hasClearance(profile, floorPos, ignoreModel) then
         return node
     end
 
-    node.walkable = stand.support > 0.2
-    node.pos = stand.pos
-    node.floorY = stand.floorY
-    node.normal = stand.normal
-    node.support = stand.support
+    node.walkable = true
+    node.pos = floorPos
+    node.floorY = floorPos.Y
+    node.normal = hit.Normal
+    node.support = 1
     return node
 end
 
@@ -732,30 +737,15 @@ function Navigator:_sweptCollision(profile, fromPos, toPos, ignoreModel)
 end
 
 function Navigator:_groundDirect(profile, aNode, bNode, ignoreModel)
-    local dist = flat(bNode.pos - aNode.pos).Magnitude
-    local steps = math.max(2, math.ceil(dist / math.max(1, profile.CellSize * 0.45)))
-    local lastPos = aNode.pos
-    local lastFloorY = aNode.floorY
-    local worstSupport = math.min(aNode.support or 1, bNode.support or 1)
-
-    for i = 1, steps do
-        local alpha = i / steps
-        local probe = aNode.pos:Lerp(bNode.pos, alpha)
-        local stand = self:_standInfo(profile, probe, ignoreModel, profile.Height + math.abs(bNode.floorY - aNode.floorY) + profile.StepHeight + 14)
-        if not stand then
-            return false, nil
-        end
-        if math.abs(stand.floorY - lastFloorY) > profile.StepHeight then
-            return false, nil
-        end
-        local hit = self:_sweptCollision(profile, lastPos, stand.pos, ignoreModel)
-        if hit then
-            return false, nil
-        end
-        worstSupport = math.min(worstSupport, stand.support)
-        lastFloorY = stand.floorY
-        lastPos = stand.pos
+    -- Lightweight: just check height difference and one swept collision
+    if math.abs(bNode.floorY - aNode.floorY) > profile.StepHeight then
+        return false, nil
     end
+    local hit = self:_sweptCollision(profile, aNode.pos, bNode.pos, ignoreModel)
+    if hit then
+        return false, nil
+    end
+    local worstSupport = math.min(aNode.support or 1, bNode.support or 1)
 
     return true, {action = "walk", confidence = worstSupport}
 end
