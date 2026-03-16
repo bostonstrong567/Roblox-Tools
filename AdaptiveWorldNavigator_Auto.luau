@@ -745,17 +745,23 @@ function Navigator:_sweptCollision(profile, fromPos, toPos, ignoreModel)
 end
 
 function Navigator:_groundDirect(profile, aNode, bNode, ignoreModel)
-    -- Lightweight: just check height difference and one swept collision
-    if math.abs(bNode.floorY - aNode.floorY) > profile.StepHeight then
+    local dy = math.abs(bNode.floorY - aNode.floorY)
+    local dist = flat(bNode.pos - aNode.pos).Magnitude
+
+    -- Allow slopes: check rise per horizontal distance, not total height
+    -- StepHeight per cellSize is the max slope the humanoid can walk
+    local maxRiseForDist = profile.StepHeight + dist * 0.6 -- ~31 degree slope tolerance
+    if dy > maxRiseForDist then
         return false, nil
     end
+
+    -- Swept collision check
     local hit = self:_sweptCollision(profile, aNode.pos, bNode.pos, ignoreModel)
     if hit then
         return false, nil
     end
-    local worstSupport = math.min(aNode.support or 1, bNode.support or 1)
 
-    return true, {action = "walk", confidence = worstSupport}
+    return true, {action = "walk", confidence = math.min(aNode.support or 1, bNode.support or 1)}
 end
 
 function Navigator:_jumpFeasible(profile, fromNode, toNode, ignoreModel)
@@ -886,9 +892,18 @@ end
 
 function Navigator:_segment(profile, aNode, bNode, ignoreModel)
     local dy = bNode.floorY - aNode.floorY
+    local absDy = math.abs(dy)
     local dist = flat(bNode.pos - aNode.pos).Magnitude
-    if dist <= profile.CellSize * 1.35 and math.abs(dy) <= profile.StepHeight then
-        return true, {action = "walk", confidence = math.min(aNode.support or 1, bNode.support or 1)}
+
+    -- Adjacent cells: humanoid can walk up ledges up to StepHeight * 2
+    -- and can walk down small drops without needing a "drop" action
+    local walkableRise = math.max(profile.StepHeight * 2, profile.Height * 0.4)
+    if dist <= profile.CellSize * 1.35 and absDy <= walkableRise then
+        -- Swept collision check to make sure nothing blocks the path
+        local hit = self:_sweptCollision(profile, aNode.pos, bNode.pos, ignoreModel)
+        if not hit then
+            return true, {action = "walk", confidence = math.min(aNode.support or 1, bNode.support or 1)}
+        end
     end
 
     local walkOK, walkInfo = self:_groundDirect(profile, aNode, bNode, ignoreModel)
@@ -896,7 +911,7 @@ function Navigator:_segment(profile, aNode, bNode, ignoreModel)
         return true, walkInfo
     end
 
-    if dy < -profile.StepHeight then
+    if dy < -walkableRise then
         return self:_dropFeasible(profile, aNode, bNode, ignoreModel)
     end
     return self:_jumpFeasible(profile, aNode, bNode, ignoreModel)
