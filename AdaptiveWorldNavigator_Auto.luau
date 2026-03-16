@@ -1739,6 +1739,7 @@ function Navigator:CreateMover(humanoid)
         stepMs = 0,
         candidateMs = 0,
         planMs = 0,
+        planBatchMs = 0,
         stepCount = 0,
         slowFrames = 0,
         candidateCount = 0,
