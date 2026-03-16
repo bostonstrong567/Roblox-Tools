@@ -1942,50 +1942,68 @@ function Navigator:CreateMover(humanoid)
                 end
 
             elseif self.Navigator:_voidAhead(profile, moveDir, self.Character) then
-                local landingY = findLanding(moveDir, profile.JumpReach * 0.5)
+                -- Check for ground at multiple distances
+                local closeY = findLanding(moveDir, profile.Radius + 1)        -- right at our feet edge
+                local nearY = findLanding(moveDir, profile.CellSize * 0.6)      -- just past the gap
+                local farY = findLanding(moveDir, profile.CellSize * 1.5)       -- further out
 
-                if landingY then
-                    local dropHeight = self.Root.Position.Y - landingY
+                -- Case 1: Ground right at our feet (tiny crack/seam) — just walk over
+                if closeY and math.abs(self.Root.Position.Y - closeY) <= profile.StepHeight then
+                    self._stepReason = "walk:crack"
+                    -- Don't set shouldJump, don't stop — just walk through
 
-                    if dropHeight > 0 and dropHeight <= profile.SafeDrop then
-                        -- Safe drop — just walk off, don't need to jump
+                -- Case 2: A* says jump and we can make it
+                elseif wp and wp.Action == "jump" and canMakeJump(wp.Position) then
+                    shouldJump = true
+                    self._stepReason = "jump:gap"
+
+                -- Case 3: A* says drop and ground is directly below (not far away)
+                elseif wp and wp.Action == "drop" and nearY then
+                    local dropH = self.Root.Position.Y - nearY
+                    if dropH >= 0 and dropH <= profile.SafeDrop then
                         self._stepReason = "dropping"
-                    elseif wp and wp.Action == "jump" and canMakeJump(wp.Position) then
-                        -- A* says jump across gap
-                        shouldJump = true
-                        self._stepReason = "jump:gap"
-                    elseif dropHeight > profile.SafeDrop and canMakeJump(Vector3.new(self.Root.Position.X + safeUnit(moveDir).X * profile.JumpReach * 0.4, landingY, self.Root.Position.Z + safeUnit(moveDir).Z * profile.JumpReach * 0.4)) then
-                        -- Far landing but reachable with a jump
-                        shouldJump = true
-                        self._stepReason = "jump:far_drop"
                     else
-                        -- No safe way across
+                        -- Drop too dangerous — stop
                         self.Humanoid:Move(Vector3.zero, false)
                         self:_requestPlan()
-                        self._stepReason = "void_stop"
+                        self._stepReason = "void_stop:unsafe_drop"
                         local stepMs = (nowS() - stepT0) * 1000
                         self._perf.stepMs = stepMs
                         self._perf.stepCount += 1
                         if stepMs > 8 then self._perf.slowFrames += 1 end
                         return
                     end
-                else
-                    -- Check further out — maybe it's a small gap with ground past it
-                    local farLandingY = findLanding(moveDir, profile.CellSize * 1.5)
-                    if farLandingY and math.abs(self.Root.Position.Y - farLandingY) <= profile.SafeDrop then
-                        -- Small gap, ground on other side at safe height
+
+                -- Case 4: Small gap — ground on other side at same height
+                elseif farY and math.abs(self.Root.Position.Y - farY) <= profile.StepHeight * 2 then
+                    if canMakeJump(Vector3.new(
+                        self.Root.Position.X + safeUnit(moveDir).X * profile.CellSize * 1.5,
+                        farY,
+                        self.Root.Position.Z + safeUnit(moveDir).Z * profile.CellSize * 1.5
+                    )) then
                         shouldJump = true
                         self._stepReason = "jump:small_gap"
                     else
                         self.Humanoid:Move(Vector3.zero, false)
                         self:_requestPlan()
-                        self._stepReason = "void_stop"
+                        self._stepReason = "void_stop:cant_reach"
                         local stepMs = (nowS() - stepT0) * 1000
                         self._perf.stepMs = stepMs
                         self._perf.stepCount += 1
                         if stepMs > 8 then self._perf.slowFrames += 1 end
                         return
                     end
+
+                -- Case 5: No safe option — STOP at edge, replan
+                else
+                    self.Humanoid:Move(Vector3.zero, false)
+                    self:_requestPlan()
+                    self._stepReason = "void_stop"
+                    local stepMs = (nowS() - stepT0) * 1000
+                    self._perf.stepMs = stepMs
+                    self._perf.stepCount += 1
+                    if stepMs > 8 then self._perf.slowFrames += 1 end
+                    return
                 end
             end
         end
