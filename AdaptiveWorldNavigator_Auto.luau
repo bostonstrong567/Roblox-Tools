@@ -1845,8 +1845,9 @@ function Navigator:CreateMover(humanoid)
         local grounded = state.Grounded
 
         local shouldJump = false
+        local params = self.Navigator:_getRayParams(self.Character and {self.Character} or {})
 
-        -- In air: keep steering toward waypoint
+        -- In air: steer toward waypoint/goal
         if not grounded then
             self._stepReason = "air:steering"
             self:_updateFacing(moveDir)
@@ -1858,69 +1859,151 @@ function Navigator:CreateMover(humanoid)
             return
         end
 
-        -- Quick landing check: raycast down at the jump target to verify ground exists
-        local function hasLanding(dir, dist)
-            local landingProbe = self.Root.Position + safeUnit(dir) * dist
+        -- Landing check: raycast down at a position to verify ground exists
+        -- Returns hit position Y or nil
+        local function findLanding(dir, dist)
+            local probe = self.Root.Position + safeUnit(dir) * dist
             local hit = Workspace:Raycast(
-                Vector3.new(landingProbe.X, self.Root.Position.Y + profile.MaxRise + 4, landingProbe.Z),
-                Vector3.new(0, -(profile.MaxRise + profile.SafeDrop + 8), 0),
-                self.Navigator:_getRayParams(self.Character and {self.Character} or {})
+                Vector3.new(probe.X, self.Root.Position.Y + profile.MaxRise + 4, probe.Z),
+                Vector3.new(0, -(profile.MaxRise + profile.SafeDrop + 12), 0),
+                params
             )
-            return hit ~= nil
+            return hit and hit.Position.Y or nil
         end
 
-        -- Grounded: check obstacles and voids
+        -- Can we make this jump? Check physics
+        local function canMakeJump(targetPos)
+            local delta = targetPos - self.Root.Position
+            local flatDist = flat(delta).Magnitude
+            local dy = delta.Y
+            -- Jump arc: v0 = JumpPower, time to reach height dy
+            -- For going UP: need v0^2 >= 2*g*dy AND horizontal reach
+            -- For going DOWN: always reachable if there's landing
+            if dy > profile.MaxRise then
+                return false -- too high
+            end
+            local g = profile.Gravity
+            local v0 = profile.JumpPower
+            if dy > 0 then
+                -- Going up: check if jump power is enough
+                if v0 * v0 < 2 * g * dy then
+                    return false
+                end
+            end
+            -- Check horizontal reach during air time
+            local disc = v0 * v0 - 2 * g * math.max(dy, 0)
+            if disc < 0 then return false end
+            local airTime = (v0 + math.sqrt(disc)) / g
+            local reach = profile.WalkSpeed * airTime * 1.1
+            return flatDist <= reach
+        end
+
+        -- Figure out target height relative to us
+        local targetPos = wp and wp.Position or self.Goal
+        local heightDiff = targetPos and (targetPos.Y - self.Root.Position.Y) or 0
+
+        -- Grounded movement logic
         if moveDir.Magnitude > 0.01 then
             local obstacleHit = self.Navigator:_obstacleAhead(profile, moveDir, self.Character)
+
             if obstacleHit then
-                if wp and wp.Action == "jump" and hasLanding(moveDir, profile.CellSize * 2) then
+                -- Check if we can hop over it (clear above)
+                local highRay = Workspace:Raycast(
+                    self.Root.Position + Vector3.new(0, profile.StepHeight + 1, 0),
+                    safeUnit(moveDir) * profile.ProbeDistance, params
+                )
+                local landingY = findLanding(moveDir, profile.ProbeDistance)
+
+                if not highRay and landingY then
+                    -- Clear above, ground ahead — hop over
                     shouldJump = true
-                    self._stepReason = "jump:obstacle"
-                else
-                    -- Check if obstacle is short enough to hop over
-                    local highRay = Workspace:Raycast(
-                        self.Root.Position + Vector3.new(0, profile.StepHeight + 1, 0),
-                        safeUnit(moveDir) * profile.ProbeDistance,
-                        self.Navigator:_getRayParams(self.Character and {self.Character} or {})
-                    )
-                    if not highRay and hasLanding(moveDir, profile.ProbeDistance) then
-                        shouldJump = true
-                        self._stepReason = "jump:hop"
-                    else
-                        moveDir = self.Navigator:_lateral(profile, moveDir, self.Character)
-                        self:_requestPlan()
-                        self._stepReason = "lateral"
-                    end
-                end
-            elseif self.Navigator:_voidAhead(profile, moveDir, self.Character) then
-                if wp and wp.Action == "jump" and hasLanding(moveDir, profile.JumpReach * 0.5) then
+                    self._stepReason = "jump:hop"
+                elseif wp and wp.Action == "jump" and landingY and canMakeJump(wp.Position) then
+                    -- A* says jump and physics check passes
                     shouldJump = true
-                    self._stepReason = "jump:gap"
-                elseif wp and wp.Action == "drop" and hasLanding(moveDir, profile.CellSize) then
-                    self._stepReason = "dropping"
+                    self._stepReason = "jump:planned"
+                elseif heightDiff > profile.StepHeight and canMakeJump(targetPos) then
+                    -- Target is above us, we can reach it by jumping
+                    shouldJump = true
+                    self._stepReason = "jump:climb"
                 else
-                    -- No safe landing — stop at edge
-                    self.Humanoid:Move(Vector3.zero, false)
+                    -- Can't jump over, go around
+                    moveDir = self.Navigator:_lateral(profile, moveDir, self.Character)
                     self:_requestPlan()
-                    self._stepReason = "void_stop"
-                    local stepMs = (nowS() - stepT0) * 1000
-                    self._perf.stepMs = stepMs
-                    self._perf.stepCount += 1
-                    if stepMs > 8 then self._perf.slowFrames += 1 end
-                    return
+                    self._stepReason = "lateral"
+                end
+
+            elseif self.Navigator:_voidAhead(profile, moveDir, self.Character) then
+                local landingY = findLanding(moveDir, profile.JumpReach * 0.5)
+
+                if landingY then
+                    local dropHeight = self.Root.Position.Y - landingY
+
+                    if dropHeight > 0 and dropHeight <= profile.SafeDrop then
+                        -- Safe drop — just walk off, don't need to jump
+                        self._stepReason = "dropping"
+                    elseif wp and wp.Action == "jump" and canMakeJump(wp.Position) then
+                        -- A* says jump across gap
+                        shouldJump = true
+                        self._stepReason = "jump:gap"
+                    elseif dropHeight > profile.SafeDrop and canMakeJump(Vector3.new(self.Root.Position.X + safeUnit(moveDir).X * profile.JumpReach * 0.4, landingY, self.Root.Position.Z + safeUnit(moveDir).Z * profile.JumpReach * 0.4)) then
+                        -- Far landing but reachable with a jump
+                        shouldJump = true
+                        self._stepReason = "jump:far_drop"
+                    else
+                        -- No safe way across
+                        self.Humanoid:Move(Vector3.zero, false)
+                        self:_requestPlan()
+                        self._stepReason = "void_stop"
+                        local stepMs = (nowS() - stepT0) * 1000
+                        self._perf.stepMs = stepMs
+                        self._perf.stepCount += 1
+                        if stepMs > 8 then self._perf.slowFrames += 1 end
+                        return
+                    end
+                else
+                    -- Check further out — maybe it's a small gap with ground past it
+                    local farLandingY = findLanding(moveDir, profile.CellSize * 1.5)
+                    if farLandingY and math.abs(self.Root.Position.Y - farLandingY) <= profile.SafeDrop then
+                        -- Small gap, ground on other side at safe height
+                        shouldJump = true
+                        self._stepReason = "jump:small_gap"
+                    else
+                        self.Humanoid:Move(Vector3.zero, false)
+                        self:_requestPlan()
+                        self._stepReason = "void_stop"
+                        local stepMs = (nowS() - stepT0) * 1000
+                        self._perf.stepMs = stepMs
+                        self._perf.stepCount += 1
+                        if stepMs > 8 then self._perf.slowFrames += 1 end
+                        return
+                    end
                 end
             end
         end
 
-        -- A* says jump at this waypoint — verify landing exists first
+        -- A* says jump — verify with physics
         if not shouldJump and wp and wp.Action == "jump" then
-            if hasLanding(moveDir, profile.CellSize * 2) then
+            if canMakeJump(wp.Position) then
                 shouldJump = true
                 self._stepReason = "jump:waypoint"
             else
-                -- A* says jump but no landing found — replan
                 self:_requestPlan()
-                self._stepReason = "jump:no_landing"
+                self._stepReason = "jump:impossible"
+            end
+        end
+
+        -- Goal is significantly below us and we're stuck — consider dropping down
+        if not shouldJump and self.Goal and self.StuckFor > 1.5 then
+            local goalDy = self.Goal.Y - self.Root.Position.Y
+            if goalDy < -profile.StepHeight then
+                -- Goal is below, check if we can safely drop toward it
+                local dropDir = safeUnit(flat(self.Goal - self.Root.Position))
+                local dropLandingY = findLanding(dropDir, profile.CellSize)
+                if dropLandingY and self.Root.Position.Y - dropLandingY <= profile.SafeDrop then
+                    moveDir = dropDir
+                    self._stepReason = "drop:to_goal"
+                end
             end
         end
 
