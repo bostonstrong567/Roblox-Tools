@@ -235,6 +235,7 @@ function Navigator.new()
     self._dynamicParts = {}
     self._dynamicList = {}
     self._dynamicCursor = 1
+    self._planBatchWorst = 0
     return self
 end
 
@@ -1043,6 +1044,7 @@ function Navigator:Plan(startPos, goalPos, humanoid, ignoreModel)
     open:push(startNode.key, flat(goalNode.pos - startNode.pos).Magnitude)
 
     local YIELD_BUDGET = 8
+    local batchT0 = nowS()
 
     while not open:isEmpty() and expanded < SEARCH_NODE_LIMIT do
         local currentKey = open:pop()
@@ -1052,9 +1054,14 @@ function Navigator:Plan(startPos, goalPos, humanoid, ignoreModel)
         closed[currentKey] = true
         expanded += 1
 
-        -- Yield every YIELD_BUDGET nodes so the renderer doesn't freeze
         if expanded % YIELD_BUDGET == 0 then
+            local batchMs = (nowS() - batchT0) * 1000
+            -- Store worst batch time for perf reporting
+            if self._planBatchWorst == nil or batchMs > self._planBatchWorst then
+                self._planBatchWorst = batchMs
+            end
             RunService.Heartbeat:Wait()
+            batchT0 = nowS()
         end
 
         local current = refs[currentKey]
@@ -1449,6 +1456,7 @@ function Navigator:CreateMover(humanoid)
     end
 
     -- Separate plan loop — runs independently, never blocks _step/RenderStep
+    mover._perf.planBatchMs = 0
     task.spawn(function()
         while mover.Active do
             if mover._planQueued and mover.Goal and not mover.Planning then
