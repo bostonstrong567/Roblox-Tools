@@ -2137,4 +2137,9 @@ function Navigator:CreateMover(humanoid)
     return mover
 end
 
+-- Store in getgenv so client.luau can find it
+if getgenv then
+    getgenv().__aiNavModule = Navigator
+end
+
 return Navigator
