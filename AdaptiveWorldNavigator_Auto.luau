@@ -529,19 +529,32 @@ function Navigator:_profile(humanoid)
     }
 end
 
+function Navigator:_getRayParams(exclusions)
+    if not self._cachedRayParams then
+        self._cachedRayParams = RaycastParams.new()
+        self._cachedRayParams.FilterType = Enum.RaycastFilterType.Exclude
+    end
+    self._cachedRayParams.FilterDescendantsInstances = exclusions or {}
+    return self._cachedRayParams
+end
+
+function Navigator:_getOverlapParams(exclusions)
+    if not self._cachedOverlapParams then
+        self._cachedOverlapParams = OverlapParams.new()
+        self._cachedOverlapParams.FilterType = Enum.RaycastFilterType.Exclude
+        self._cachedOverlapParams.MaxParts = 64
+    end
+    self._cachedOverlapParams.FilterDescendantsInstances = exclusions or {}
+    return self._cachedOverlapParams
+end
+
+-- Keep old names working
 function Navigator:_makeRayParams(exclusions)
-    local params = RaycastParams.new()
-    params.FilterType = Enum.RaycastFilterType.Exclude
-    params.FilterDescendantsInstances = exclusions or {}
-    return params
+    return self:_getRayParams(exclusions)
 end
 
 function Navigator:_makeOverlapParams(exclusions)
-    local params = OverlapParams.new()
-    params.FilterType = Enum.RaycastFilterType.Exclude
-    params.FilterDescendantsInstances = exclusions or {}
-    params.MaxParts = 64
-    return params
+    return self:_getOverlapParams(exclusions)
 end
 
 function Navigator:_cellWorld(profile, cx, cz)
@@ -569,15 +582,10 @@ function Navigator:_floorHit(profile, position, ignoreModel, extraHeight)
         self._worldBounds.hasAny and (self._worldBounds.maxY + 64) or RAY_MARGIN_Y
     )
 
-    local exclude = {}
-    if ignoreModel then
-        table.insert(exclude, ignoreModel)
-    end
-
     local hit = Workspace:Raycast(
         Vector3.new(position.X, highY, position.Z),
         Vector3.new(0, -(highY + RAY_DEPTH), 0),
-        self:_makeRayParams(exclude)
+        self:_getRayParams(ignoreModel and {ignoreModel} or {})
     )
 
     if not hit or not hit.Instance then
@@ -1789,21 +1797,52 @@ function Navigator:CreateMover(humanoid)
         local moveDir = wp and safeUnit(flat(wp.Position - self.Root.Position)) or safeUnit(flat(self.Goal - self.Root.Position))
         local grounded = state.Grounded
 
+        local shouldJump = false
+
+        -- In air: keep steering toward waypoint, no obstacle/void checks needed
+        if not grounded then
+            self._stepReason = "air:steering"
+            self:_updateFacing(moveDir)
+            self.Humanoid:Move(moveDir, false)
+            local stepMs = (nowS() - stepT0) * 1000
+            self._perf.stepMs = stepMs
+            self._perf.stepCount += 1
+            if stepMs > 8 then self._perf.slowFrames += 1 end
+            return
+        end
+
+        -- Grounded: check obstacles and voids
         if moveDir.Magnitude > 0.01 then
             local obstacleHit = self.Navigator:_obstacleAhead(profile, moveDir, self.Character)
             if obstacleHit then
-                if grounded and wp and wp.Action == "jump" then
-                    self.Humanoid.Jump = true
+                if wp and wp.Action == "jump" then
+                    -- A* says jump here, trust it
+                    shouldJump = true
                     self._stepReason = "jump:obstacle"
                 else
-                    moveDir = self.Navigator:_lateral(profile, moveDir, self.Character)
-                    self:_requestPlan()
-                    self._stepReason = "lateral"
+                    -- Check if obstacle is short enough to hop over (micro-jump)
+                    local highRay = Workspace:Raycast(
+                        self.Root.Position + Vector3.new(0, profile.StepHeight + 1, 0),
+                        safeUnit(moveDir) * profile.ProbeDistance,
+                        self.Navigator:_getRayParams(self.Character and {self.Character} or {})
+                    )
+                    if not highRay then
+                        -- Clear above obstacle, hop over it
+                        shouldJump = true
+                        self._stepReason = "jump:hop"
+                    else
+                        -- Blocked above too, go around
+                        moveDir = self.Navigator:_lateral(profile, moveDir, self.Character)
+                        self:_requestPlan()
+                        self._stepReason = "lateral"
+                    end
                 end
             elseif self.Navigator:_voidAhead(profile, moveDir, self.Character) then
-                if grounded and wp and wp.Action == "jump" then
-                    self.Humanoid.Jump = true
-                    self._stepReason = "jump:void"
+                if wp and (wp.Action == "jump" or wp.Action == "drop") then
+                    if wp.Action == "jump" then
+                        shouldJump = true
+                    end
+                    self._stepReason = wp.Action == "jump" and "jump:gap" or "dropping"
                 else
                     self.Humanoid:Move(Vector3.zero, false)
                     self:_requestPlan()
@@ -1817,15 +1856,21 @@ function Navigator:CreateMover(humanoid)
             end
         end
 
-        if wp and wp.Action == "drop" then
-            self._stepReason = "dropping"
-        elseif grounded and wp and wp.Action == "jump" then
-            self.Humanoid.Jump = true
+        -- A* says jump at this waypoint (even without obstacle/void ahead — could be a ledge jump)
+        if not shouldJump and wp and wp.Action == "jump" then
+            shouldJump = true
             self._stepReason = "jump:waypoint"
-        else
+        end
+
+        if shouldJump then
+            self.Humanoid.Jump = true
+        end
+
+        if not self._stepReason or self._stepReason == "init" then
             self._stepReason = "moving"
         end
 
+        -- Always move toward waypoint — jump + move makes the character travel in that direction
         self:_updateFacing(moveDir)
         self.Humanoid:Move(moveDir, false)
 
