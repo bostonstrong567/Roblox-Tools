@@ -1799,7 +1799,7 @@ function Navigator:CreateMover(humanoid)
 
         local shouldJump = false
 
-        -- In air: keep steering toward waypoint, no obstacle/void checks needed
+        -- In air: keep steering toward waypoint
         if not grounded then
             self._stepReason = "air:steering"
             self:_updateFacing(moveDir)
@@ -1811,39 +1811,48 @@ function Navigator:CreateMover(humanoid)
             return
         end
 
+        -- Quick landing check: raycast down at the jump target to verify ground exists
+        local function hasLanding(dir, dist)
+            local landingProbe = self.Root.Position + safeUnit(dir) * dist
+            local hit = Workspace:Raycast(
+                Vector3.new(landingProbe.X, self.Root.Position.Y + profile.MaxRise + 4, landingProbe.Z),
+                Vector3.new(0, -(profile.MaxRise + profile.SafeDrop + 8), 0),
+                self.Navigator:_getRayParams(self.Character and {self.Character} or {})
+            )
+            return hit ~= nil
+        end
+
         -- Grounded: check obstacles and voids
         if moveDir.Magnitude > 0.01 then
             local obstacleHit = self.Navigator:_obstacleAhead(profile, moveDir, self.Character)
             if obstacleHit then
-                if wp and wp.Action == "jump" then
-                    -- A* says jump here, trust it
+                if wp and wp.Action == "jump" and hasLanding(moveDir, profile.CellSize * 2) then
                     shouldJump = true
                     self._stepReason = "jump:obstacle"
                 else
-                    -- Check if obstacle is short enough to hop over (micro-jump)
+                    -- Check if obstacle is short enough to hop over
                     local highRay = Workspace:Raycast(
                         self.Root.Position + Vector3.new(0, profile.StepHeight + 1, 0),
                         safeUnit(moveDir) * profile.ProbeDistance,
                         self.Navigator:_getRayParams(self.Character and {self.Character} or {})
                     )
-                    if not highRay then
-                        -- Clear above obstacle, hop over it
+                    if not highRay and hasLanding(moveDir, profile.ProbeDistance) then
                         shouldJump = true
                         self._stepReason = "jump:hop"
                     else
-                        -- Blocked above too, go around
                         moveDir = self.Navigator:_lateral(profile, moveDir, self.Character)
                         self:_requestPlan()
                         self._stepReason = "lateral"
                     end
                 end
             elseif self.Navigator:_voidAhead(profile, moveDir, self.Character) then
-                if wp and (wp.Action == "jump" or wp.Action == "drop") then
-                    if wp.Action == "jump" then
-                        shouldJump = true
-                    end
-                    self._stepReason = wp.Action == "jump" and "jump:gap" or "dropping"
+                if wp and wp.Action == "jump" and hasLanding(moveDir, profile.JumpReach * 0.5) then
+                    shouldJump = true
+                    self._stepReason = "jump:gap"
+                elseif wp and wp.Action == "drop" and hasLanding(moveDir, profile.CellSize) then
+                    self._stepReason = "dropping"
                 else
+                    -- No safe landing — stop at edge
                     self.Humanoid:Move(Vector3.zero, false)
                     self:_requestPlan()
                     self._stepReason = "void_stop"
@@ -1856,10 +1865,16 @@ function Navigator:CreateMover(humanoid)
             end
         end
 
-        -- A* says jump at this waypoint (even without obstacle/void ahead — could be a ledge jump)
+        -- A* says jump at this waypoint — verify landing exists first
         if not shouldJump and wp and wp.Action == "jump" then
-            shouldJump = true
-            self._stepReason = "jump:waypoint"
+            if hasLanding(moveDir, profile.CellSize * 2) then
+                shouldJump = true
+                self._stepReason = "jump:waypoint"
+            else
+                -- A* says jump but no landing found — replan
+                self:_requestPlan()
+                self._stepReason = "jump:no_landing"
+            end
         end
 
         if shouldJump then
@@ -1870,7 +1885,6 @@ function Navigator:CreateMover(humanoid)
             self._stepReason = "moving"
         end
 
-        -- Always move toward waypoint — jump + move makes the character travel in that direction
         self:_updateFacing(moveDir)
         self.Humanoid:Move(moveDir, false)
 
