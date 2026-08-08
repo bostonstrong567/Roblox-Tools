@@ -2900,31 +2900,56 @@ function Section:Group(opts)
 	opts = type(opts) == "table" and opts or {}
 	local open = opts.Open ~= false
 
-	local header = create("TextButton", {
-		BackgroundTransparency = 1, Text = "",
-		Size = UDim2.new(1, 0, 0, 22), AutoButtonColor = false,
-	}, { Util.hlist(7) })
-	header:SetAttribute("AuraHeading", true)
+	--[[
+		A full-width bar, not a bare row of text.
 
-	local chevron = Util.icon("chevron-down", 13, Theme.muted)
-	if chevron then
-		chevron.LayoutOrder = 1
-		chevron.Parent = header
-		chevron = Util.rotatable(chevron)
-		chevron.Rotation = open and 0 or -90
-	end
+		As a plain heading it was indistinguishable from a Title: nothing said it
+		could be pressed, and the small arrow tucked at the far left read as
+		decoration. Given a surface, a border and a hover state it announces itself
+		the way every other interactive row in the library does.
+
+		The chevron sits on the RIGHT and turns through 180 -- exactly what Dropdown
+		and ColorPicker do. Down is closed and up is open in all three, so the
+		gesture is learned once rather than per control.
+	]]
+	--[[
+		Styled as a heading, because that is what it is.
+
+		A card-surfaced bar with a centred title announced itself well and looked
+		like nothing else on the page -- next to THEME and STORAGE, which are flat
+		left-aligned labels, it read as a foreign control rather than a heading that
+		happens to fold. Matching Title exactly and adding a chevron says "heading,
+		and it opens" without inventing a second visual language for the same idea.
+
+		Full width and 24px tall so the whole row is a target, not just the words.
+	]]
+	local header = create("TextButton", {
+		BackgroundColor3 = Theme.hover, BackgroundTransparency = 1,
+		Text = "", AutoButtonColor = false,
+		Size = UDim2.new(1, 0, 0, 24),
+	}, { Util.corner(4), Util.padding(0, 2, 4, 0, 0), Util.hlist(7) })
+	header:SetAttribute("AuraHeading", true)
 
 	local glyph = opts.Icon and Util.icon(opts.Icon, 13, Theme.muted) or nil
 	if glyph then
-		glyph.LayoutOrder = 2
+		glyph.LayoutOrder = 1
 		glyph.Parent = header
 	end
 
 	local label = Util.label(string.upper(tostring(opts.Text or "Group")), 13, Theme.muted, FONT_BOLD)
 	label.Size = UDim2.new(0, 0, 1, 0)
 	label.AutomaticSize = Enum.AutomaticSize.X
-	label.LayoutOrder = 3
+	label.LayoutOrder = 2
 	label.Parent = header
+	create("UIFlexItem", { Parent = label, FlexMode = Enum.UIFlexMode.Fill })
+
+	local chevron = Util.icon("chevron-down", 13, Theme.faint)
+	if chevron then
+		chevron.LayoutOrder = 3
+		chevron.Parent = header
+		chevron = Util.rotatable(chevron)
+		chevron.Rotation = open and 180 or 0
+	end
 	self:_add(header)
 
 	local holder = create("Frame", {
@@ -2962,12 +2987,12 @@ function Section:Group(opts)
 			tween(holder, { Size = UDim2.new(1, 0, 0, target) },
 				open and Motion.open or Motion.shut)
 			if chevron then
-				tween(chevron, { Rotation = open and 0 or -90 },
+				tween(chevron, { Rotation = open and 180 or 0 },
 					open and Motion.open or Motion.shut)
 			end
 		else
 			holder.Size = UDim2.new(1, 0, 0, target)
-			if chevron then chevron.Rotation = open and 0 or -90 end
+			if chevron then chevron.Rotation = open and 180 or 0 end
 		end
 	end
 
@@ -2977,12 +3002,16 @@ function Section:Group(opts)
 
 	Util.hover(header,
 		function()
+			tween(header, { BackgroundTransparency = 0.9 })
 			tween(label, { TextColor3 = Theme.text })
+			if glyph then tween(glyph, { ImageColor3 = Theme.accent }) end
 			if chevron then tween(chevron, { ImageColor3 = Theme.accent }) end
 		end,
 		function()
+			tween(header, { BackgroundTransparency = 1 })
 			tween(label, { TextColor3 = Theme.muted })
-			if chevron then tween(chevron, { ImageColor3 = Theme.muted }) end
+			if glyph then tween(glyph, { ImageColor3 = Theme.muted }) end
+			if chevron then tween(chevron, { ImageColor3 = Theme.faint }) end
 		end)
 
 	header.Activated:Connect(function()
@@ -3014,7 +3043,18 @@ function Section:Group(opts)
 	end
 	function group:IsOpen() return open end
 
-	task.defer(function() apply(false) end)
+	--[[
+		Two frames, so the measurement survives collapsing.
+
+		holder is clipped and animates to zero; inner sizes itself to the controls.
+		Reading the height off a frame that has just been squeezed to zero returns
+		zero, so expanding measured nothing and stayed shut -- which is why this
+		waits for a layout pass and reads `inner`, never `holder`.
+	]]
+	task.defer(function()
+		RunService.Heartbeat:Wait()
+		apply(false)
+	end)
 	return group
 end
 
