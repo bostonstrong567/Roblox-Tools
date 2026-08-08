@@ -180,7 +180,18 @@ local Config = {
 		MinContent = 300,  -- the content pane never shrinks past this
 		SaveLayout = false, -- remember size, position and rail per window
 		SafeArea   = true,  -- keep the window inside the usable viewport
-		ReplaceExisting = false, -- allow more than one Aura window by default
+		--[[
+			Re-running a script REPLACES its window by default.
+
+			Coexisting sounds harmless and is not: an executor user runs the same
+			loadstring repeatedly while working, and every run left another live
+			window behind -- each with its own keybind, its own tile pool and its own
+			dissolve. Pressing the toggle key then played N animations at once, which
+			is felt as the UI lagging worse every time you execute.
+
+			Set false when a script genuinely wants two windows on screen together.
+		]]
+		ReplaceExisting = true,
 	},
 }
 
@@ -2467,8 +2478,30 @@ Controls.Dropdown = function(section, opts)
 					setOpen(false)
 					return
 				end
+				--[[
+					Shift needs an anchor, and there is not always one.
+
+					anchorIndex only existed after a plain click, so shift-clicking as
+					your FIRST action in a freshly opened menu silently fell through to
+					a toggle -- the "sometimes it doesn't work" case. Reopening a
+					dropdown, or any rebuild, put you back in that state.
+
+					Falling back to the lowest selected row gives shift something
+					sensible to measure from, and failing that the row you clicked,
+					which degrades to selecting exactly that one.
+				]]
 				local shiftHeld = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
 					or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+
+				if shiftHeld and not anchorIndex then
+					for optionIndex, candidate in ipairs(options) do
+						if isChosen(candidate) then
+							anchorIndex = optionIndex
+							break
+						end
+					end
+					anchorIndex = anchorIndex or index
+				end
 
 				if shiftHeld and anchorIndex then
 					local from, to = math.min(anchorIndex, index), math.max(anchorIndex, index)
@@ -2531,6 +2564,8 @@ Controls.Dropdown = function(section, opts)
 		return true
 	end
 	function handle:Get() return multi and copyArray(value) or value end
+	-- SetOptions can shorten the list; an anchor pointing past the end would make
+	-- the next shift-click select a range that does not exist.
 	function handle:SetOptions(list)
 		if list ~= nil and type(list) ~= "table" then
 			return false, "options must be an array"
@@ -2901,34 +2936,38 @@ function Section:Group(opts)
 	local open = opts.Open ~= false
 
 	--[[
-		A full-width bar, not a bare row of text.
+		One container that grows, not a header with loose content beneath it.
 
-		As a plain heading it was indistinguishable from a Title: nothing said it
-		could be pressed, and the small arrow tucked at the far left read as
-		decoration. Given a surface, a border and a hover state it announces itself
-		the way every other interactive row in the library does.
-
-		The chevron sits on the RIGHT and turns through 180 -- exactly what Dropdown
-		and ColorPicker do. Down is closed and up is open in all three, so the
-		gesture is learned once rather than per control.
+		Previously the header and the content were two separate page entries, so an
+		open group was a transparent run of cards that happened to sit under a
+		label -- nothing tied them together, and the header looked like it belonged
+		to whatever followed. As a single card carrying the same surface as every
+		other container, opening it grows the container itself and the rows are
+		visibly inside it.
 	]]
+	local HEADER_HEIGHT = 34
+	local PAD_BOTTOM = 8
+
 	--[[
-		Styled as a heading, because that is what it is.
+		The container is `panel`, one step back from the `panel2` its rows use.
 
-		A card-surfaced bar with a centred title announced itself well and looked
-		like nothing else on the page -- next to THEME and STORAGE, which are flat
-		left-aligned labels, it read as a foreign control rather than a heading that
-		happens to fold. Matching Title exactly and adding a chevron says "heading,
-		and it opens" without inventing a second visual language for the same idea.
-
-		Full width and 24px tall so the whole row is a target, not just the words.
+		Painting it the same tone as the cards inside it made both disappear into
+		a single slab -- which is why the rows were briefly flattened instead. A
+		shade of separation keeps the container reading as a container AND lets
+		each row keep the card it always had.
 	]]
+	local container = create("Frame", {
+		BackgroundColor3 = Theme.panel,
+		Size = UDim2.new(1, 0, 0, HEADER_HEIGHT),
+		ClipsDescendants = true,
+	}, { Util.corner(Metrics.radius), Util.stroke(Theme.border) })
+	container:SetAttribute("AuraHeading", true)
+	self:_add(container)
+
 	local header = create("TextButton", {
-		BackgroundColor3 = Theme.hover, BackgroundTransparency = 1,
-		Text = "", AutoButtonColor = false,
-		Size = UDim2.new(1, 0, 0, 24),
-	}, { Util.corner(4), Util.padding(0, 2, 4, 0, 0), Util.hlist(7) })
-	header:SetAttribute("AuraHeading", true)
+		Parent = container, BackgroundTransparency = 1, Text = "", AutoButtonColor = false,
+		Size = UDim2.new(1, 0, 0, HEADER_HEIGHT),
+	}, { Util.padding(0, 12, 10, 0, 0), Util.hlist(7) })
 
 	local glyph = opts.Icon and Util.icon(opts.Icon, 13, Theme.muted) or nil
 	if glyph then
@@ -2950,31 +2989,18 @@ function Section:Group(opts)
 		chevron = Util.rotatable(chevron)
 		chevron.Rotation = open and 180 or 0
 	end
-	self:_add(header)
 
-	local holder = create("Frame", {
-		BackgroundTransparency = 1, ClipsDescendants = true,
-		Size = UDim2.new(1, 0, 0, 0),
-	})
-	self:_add(holder)
-
-
+	-- Rows live below the header, inside the same container.
 	local inner = create("Frame", {
-		Parent = holder, BackgroundTransparency = 1,
-		Position = UDim2.fromOffset(12, 0),
-		Size = UDim2.new(1, -12, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
-	}, { Util.list(Metrics.gap) })
-
-	create("Frame", {
-		Name = "__groupRule", Parent = holder, BackgroundColor3 = Theme.border,
-		BorderSizePixel = 0, BackgroundTransparency = 0.35,
-		Position = UDim2.fromOffset(4, 0), Size = UDim2.new(0, 1, 1, 0),
-	})
+		Parent = container, BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(0, HEADER_HEIGHT),
+		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+	}, { Util.list(Metrics.gap), Util.padding(0, 8, 8, 0, 0) })
 
 	local owner = self._owner or self
 	local groupRecord = {
-		header = header,
-		holder = holder,
+		header = container,
+		holder = inner,
 		text = string.lower(tostring(opts.Text or "Group")),
 	}
 	table.insert(owner._groups, groupRecord)
@@ -2982,33 +3008,35 @@ function Section:Group(opts)
 	local function contentHeight() return inner.AbsoluteSize.Y end
 
 	local function apply(animated)
-		local target = open and contentHeight() or 0
+		local target = HEADER_HEIGHT + (open and (contentHeight() + PAD_BOTTOM) or 0)
 		if animated then
-			tween(holder, { Size = UDim2.new(1, 0, 0, target) },
+			tween(container, { Size = UDim2.new(1, 0, 0, target) },
 				open and Motion.open or Motion.shut)
 			if chevron then
 				tween(chevron, { Rotation = open and 180 or 0 },
 					open and Motion.open or Motion.shut)
 			end
 		else
-			holder.Size = UDim2.new(1, 0, 0, target)
+			container.Size = UDim2.new(1, 0, 0, target)
 			if chevron then chevron.Rotation = open and 180 or 0 end
 		end
 	end
 
+	-- A dropdown opening inside the group makes it taller; the container has to
+	-- follow or it clips the menu it just made room for.
 	inner:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
-		if open then holder.Size = UDim2.new(1, 0, 0, contentHeight()) end
+		if open then
+			container.Size = UDim2.new(1, 0, 0, HEADER_HEIGHT + contentHeight() + PAD_BOTTOM)
+		end
 	end)
 
 	Util.hover(header,
 		function()
-			tween(header, { BackgroundTransparency = 0.9 })
 			tween(label, { TextColor3 = Theme.text })
 			if glyph then tween(glyph, { ImageColor3 = Theme.accent }) end
 			if chevron then tween(chevron, { ImageColor3 = Theme.accent }) end
 		end,
 		function()
-			tween(header, { BackgroundTransparency = 1 })
 			tween(label, { TextColor3 = Theme.muted })
 			if glyph then tween(glyph, { ImageColor3 = Theme.muted }) end
 			if chevron then tween(chevron, { ImageColor3 = Theme.faint }) end
@@ -3024,9 +3052,9 @@ function Section:Group(opts)
 		Name = self.Name,
 		Page = inner,
 		Header = header,
-		Instance = holder,
+		Instance = container,
 		_order = 1,
-		_searchable = self._searchable, -- one index, so search still finds these
+		_searchable = self._searchable,
 		_popups = self._popups,
 		_owner = self,
 		_groupRecord = groupRecord,
@@ -3043,14 +3071,6 @@ function Section:Group(opts)
 	end
 	function group:IsOpen() return open end
 
-	--[[
-		Two frames, so the measurement survives collapsing.
-
-		holder is clipped and animates to zero; inner sizes itself to the controls.
-		Reading the height off a frame that has just been squeezed to zero returns
-		zero, so expanding measured nothing and stayed shut -- which is why this
-		waits for a layout pass and reads `inner`, never `holder`.
-	]]
 	task.defer(function()
 		RunService.Heartbeat:Wait()
 		apply(false)
@@ -4213,10 +4233,19 @@ function Aura:Toggle(visible)
 	else
 		visible = visible ~= false
 	end
-	if self._fxBusy then
-		self._pending = visible
-		return false
-	end
+	--[[
+		A press during a run is DROPPED, not remembered.
+
+		Queueing the latest intent sounds friendlier and behaves worse: every press
+		while the dissolve was playing scheduled another full run, so a burst of
+		them produced a burst of animations that kept firing long after you stopped
+		pressing -- the window toggling by itself, seconds later.
+
+		A 0.6s animation cannot honour a press 0.1s in without either interrupting
+		itself or promising a run it has not started. Refusing is the honest option,
+		and it is what makes the control impossible to desynchronise from the key.
+	]]
+	if self._fxBusy then return false end
 	self._pending = nil
 	self._targetVisible = visible
 	if visible == self.Window.Visible then return true end
@@ -4290,7 +4319,7 @@ local TOAST_BURN = NumberSequence.new({
 })
 
 -- A short-lived ember burst over a rect, in the gui's own coordinates.
-local function toastEmbers(gui, card, outward)
+local function toastEmbers(gui, card, outward, tone)
 	if not effectsEnabled() then return end
 	local origin = card.AbsolutePosition - gui.AbsolutePosition
 	local size = card.AbsoluteSize
@@ -4302,9 +4331,16 @@ local function toastEmbers(gui, card, outward)
 		local y = origin.Y + math.random(0, math.max(1, math.floor(size.Y)))
 		local spark = create("Frame", {
 			Parent = gui, ZIndex = 60, BorderSizePixel = 0,
+			--[[
+				A toast's sparks are the ACCENT, not fire.
+
+				The window's dissolve is deliberately fiery and stays that way -- it
+				is a burn. A notification is not, and orange embers on an Ocean or
+				Grape palette were the one part of it still wearing the default
+				theme's colours while the panel, border and icon had all moved.
+			]]
 			BackgroundColor3 = (math.random() < 0.55)
-				and fxColour("emberHot", Color3.fromRGB(255, 248, 226))
-				or fxColour("ember", Color3.fromRGB(255, 132, 34)),
+				and Util.brighten(tone, 0.55) or tone,
 			Position = UDim2.fromOffset(x, y),
 			Size = UDim2.fromOffset(dim, dim),
 			BackgroundTransparency = outward and 0.1 or 1,
@@ -4340,9 +4376,25 @@ function Aura:Notify(opts)
 		if child:IsA("CanvasGroup") then existing[#existing + 1] = child end
 	end
 	table.sort(existing, function(a, b) return a.LayoutOrder < b.LayoutOrder end)
+	--[[
+		An evicted toast leaves the way it arrived.
+
+		Destroying the oldest outright meant that spamming notifications made them
+		vanish mid-life with no transition, while new ones burned in beneath -- the
+		stack appeared to glitch rather than move. Dismissing it early runs the same
+		exit it would have had anyway, just sooner.
+	]]
 	while #existing >= maxToasts do
 		local oldest = table.remove(existing, 1)
-		oldest:Destroy()
+		if oldest:GetAttribute("AuraDismissing") then
+			oldest:Destroy()
+		else
+			oldest:SetAttribute("AuraDismissing", true)
+			tween(oldest, { GroupTransparency = 1 }, Motion.shut)
+			task.delay(0.26, function()
+				if oldest.Parent then oldest:Destroy() end
+			end)
+		end
 	end
 	self._toastSerial = (self._toastSerial or 0) + 1
 
@@ -4401,7 +4453,18 @@ function Aura:Notify(opts)
 
 	local life = math.max(0, tonumber(opts.Duration) or 3)
 
-	-- The draining rule. Anchored bottom-left so it shortens from the right.
+	--[[
+		Only the newest toast shows its countdown.
+
+		Every toast used to drain its own rule, so five on screen meant five accent
+		lines sweeping at five different rates -- the stack read as a progress
+		dashboard rather than a list of messages, and spamming made it strobe. One
+		line answers the only question anyone asks of it ("how long until this
+		goes?") for the message you are actually reading.
+
+		The older one fades rather than cutting, so handing over is a transition
+		instead of a flicker.
+	]]
 	local rule = create("Frame", {
 		Parent = card, BackgroundColor3 = tone,
 		BorderSizePixel = 0, ZIndex = 4,
@@ -4409,8 +4472,30 @@ function Aura:Notify(opts)
 		Size = UDim2.new(1, 24, 0, 2), BackgroundTransparency = 0.35,
 	})
 
+	local previousRule = self._activeRule
+	if previousRule and previousRule.Parent then
+		tween(previousRule, { BackgroundTransparency = 1 }, Motion.fast)
+	end
+	self._activeRule = rule
+
+	--[[
+		Arrival: the wipe, plus a scale that settles.
+
+		The wipe alone reads well for one toast and poorly for six -- each simply
+		existed, at full size, the instant it was asked for, so a burst looked like
+		a stack being assembled rather than notifications appearing. A UIScale is
+		the one way to give a list item entrance motion: the layout owns its
+		position and size, but not its scale.
+
+		Back easing overshoots a touch on the way in, which is what makes it read
+		as landing rather than resizing.
+	]]
+	local pop = create("UIScale", { Parent = card, Scale = effectsEnabled() and 0.9 or 1 })
+
 	-- Burn in: the wipe uncovers from the bottom-right, embers trail the front.
 	if effectsEnabled() then
+		tween(pop, { Scale = 1 },
+			TweenInfo.new(0.34, Enum.EasingStyle.Back, Enum.EasingDirection.Out))
 		tween(card, { GroupTransparency = 0 }, Motion.fast)
 		tween(burn, { Offset = Vector2.new(-0.62, 0) },
 			TweenInfo.new(0.34, Enum.EasingStyle.Linear))
@@ -4420,7 +4505,7 @@ function Aura:Notify(opts)
 		end
 		task.defer(function()
 			RunService.Heartbeat:Wait()
-			if card.Parent then toastEmbers(self.Gui, card, false) end
+			if card.Parent then toastEmbers(self.Gui, card, false, tone) end
 		end)
 	else
 		burn.Enabled = false
@@ -4430,13 +4515,15 @@ function Aura:Notify(opts)
 		TweenInfo.new(life, Enum.EasingStyle.Linear))
 
 	task.delay(life, function()
+		if self._activeRule == rule then self._activeRule = nil end
 		if not card.Parent then return end
-		toastEmbers(self.Gui, card, true)
+		toastEmbers(self.Gui, card, true, tone)
 		if not effectsEnabled() then
 			card:Destroy()
 			return
 		end
 		-- Cover from the top-left, mirroring the window's own dismissal.
+		tween(pop, { Scale = 0.94 }, Motion.shut)
 		tween(burn, { Offset = Vector2.new(0.62, 0) },
 			TweenInfo.new(0.30, Enum.EasingStyle.Linear))
 		if edgeBurn then
@@ -5025,15 +5112,26 @@ function Aura.new(opts)
 	end) end
 
 	--------------------------------------------------------------- keybind ----
-	local explicitBind = opts.Keybind ~= nil
 	local bind = opts.Keybind or Enum.KeyCode.RightShift
 	if type(bind) == "string" then bind = Enum.KeyCode[bind] end
 	if typeof(bind) ~= "EnumItem" or bind.EnumType ~= Enum.KeyCode then
 		bind = Enum.KeyCode.RightShift
 	end
+	--[[
+		Only the newest window answers the key, even when the bind was explicit.
+
+		The guard used to read `explicitBind or newest`, so naming a keybind opted
+		that window into responding forever -- and since naming one is the common
+		case, every window ever created answered the same key together. One press,
+		N dissolves.
+
+		Passing a keybind says WHICH key, not "answer even when something else is
+		in front of you".
+	]]
 	self:_track(UserInputService.InputBegan:Connect(function(input, processed)
-		if not processed and input.KeyCode == bind
-			and (explicitBind or live[#live] == self) then self:Toggle() end
+		if not processed and input.KeyCode == bind and live[#live] == self then
+			self:Toggle()
+		end
 	end))
 
 	-- Resolve every constructor option through the same geometry path used later.
