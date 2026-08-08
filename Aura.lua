@@ -169,6 +169,7 @@ local Config = {
 	},
 
 	Window = {
+		Search     = false, -- the sidebar search box; per window via Aura.new{Search=true}
 		Size       = Vector2.new(700, 452),
 		MinSize    = Vector2.new(560, 300),
 		MaxSize    = nil,  -- nil = clamp to the viewport
@@ -4781,28 +4782,49 @@ function Aura.new(opts)
 	})
 	self.Rail = rail
 
-	local searchBox = create("Frame", {
-		Parent = rail, BackgroundColor3 = Theme.bg, ZIndex = 3,
-		Position = UDim2.fromOffset(10, 10), Size = UDim2.new(1, -21, 0, 30),
-	}, { Util.corner(Metrics.ctlRadius), Util.stroke(Theme.border) })
-	local searchIcon = Util.icon("search", 14, Theme.faint)
-	searchIcon.AnchorPoint = Vector2.new(0, 0.5)
-	searchIcon.Position = UDim2.new(0, 9, 0.5, 0)
-	searchIcon.ZIndex = 4
-	searchIcon.Parent = searchBox
-	local search = create("TextBox", {
-		ClipsDescendants = true,
-		Parent = searchBox, BackgroundTransparency = 1, ZIndex = 4,
-		Position = UDim2.fromOffset(25, 0), Size = UDim2.new(1, -32, 1, 0),
-		Text = "", PlaceholderText = "Search...", PlaceholderColor3 = Theme.faint,
-		TextColor3 = Theme.text, TextSize = 12.5, Font = FONT,
-		TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false,
-	})
+	--[[
+		The sidebar search is opt-in: Aura.new({ Search = true }).
+
+		Off by default because most scripts have two or three sections, where a
+		search box is a permanent 40px of sidebar spent answering a question nobody
+		asked. It earns its place on a page with a dozen, which is the caller's
+		call to make, not the library's.
+
+		The tab list takes the freed space rather than leaving a gap -- an absent
+		control should be absent, not invisible.
+	]]
+	local wantSearch = opts.Search
+	if wantSearch == nil then wantSearch = Config.Window.Search == true end
+
+	local search
+	if wantSearch then
+		local searchBox = create("Frame", {
+			Parent = rail, BackgroundColor3 = Theme.bg, ZIndex = 3,
+			Position = UDim2.fromOffset(10, 10), Size = UDim2.new(1, -21, 0, 30),
+		}, { Util.corner(Metrics.ctlRadius), Util.stroke(Theme.border) })
+		local searchIcon = Util.icon("search", 14, Theme.faint)
+		if searchIcon then
+			searchIcon.AnchorPoint = Vector2.new(0, 0.5)
+			searchIcon.Position = UDim2.new(0, 9, 0.5, 0)
+			searchIcon.ZIndex = 4
+			searchIcon.Parent = searchBox
+		end
+		search = create("TextBox", {
+			ClipsDescendants = true,
+			Parent = searchBox, BackgroundTransparency = 1, ZIndex = 4,
+			Position = UDim2.fromOffset(25, 0), Size = UDim2.new(1, -32, 1, 0),
+			Text = "", PlaceholderText = opts.SearchPlaceholder or "Search...",
+			PlaceholderColor3 = Theme.faint,
+			TextColor3 = Theme.text, TextSize = 12.5, Font = FONT,
+			TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false,
+		})
+	end
 	self.Search = search
 
+	local tabsTop = wantSearch and 50 or 12
 	self.TabList = create("ScrollingFrame", {
 		Parent = rail, BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 3,
-		Position = UDim2.fromOffset(8, 50), Size = UDim2.new(1, -17, 1, -78),
+		Position = UDim2.fromOffset(8, tabsTop), Size = UDim2.new(1, -17, 1, -(tabsTop + 28)),
 		ScrollBarThickness = 0, CanvasSize = UDim2.new(),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 	}, { Util.list(4) })
@@ -4948,7 +4970,7 @@ function Aura.new(opts)
 
 	---------------------------------------------------------------- search ----
 
-	search:GetPropertyChangedSignal("Text"):Connect(function()
+	if search then search:GetPropertyChangedSignal("Text"):Connect(function()
 		local query = string.lower(search.Text)
 		local firstHit, activeHits = nil, 0
 
@@ -4960,7 +4982,7 @@ function Aura.new(opts)
 		end
 
 		if query ~= "" and activeHits == 0 and firstHit then self:Select(firstHit) end
-	end)
+	end) end
 
 	--------------------------------------------------------------- keybind ----
 	local explicitBind = opts.Keybind ~= nil
